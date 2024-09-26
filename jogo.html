@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jogo de Plataforma 2D</title>
+    <style>
+        body {
+            background-color: black;
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+        canvas {
+            border: 1px solid white;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas" width="800" height="400"></canvas>
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // Jogador
+        const player = {
+            x: 50,
+            y: canvas.height - 50,
+            width: 30,
+            height: 30,
+            speed: 5,
+            jumping: false,
+            jumpStrength: 15,
+            verticalVelocity: 0,
+            lives: 3
+        };
+
+        const projectiles = [];
+
+        // Inimigo robô
+        const enemy = {
+            x: 700,
+            y: canvas.height - 60, // Posiciona o robô no chão
+            width: 40,
+            height: 60,
+            speed: 2
+        };
+
+        // Função para criar um novo projétil
+        function createProjectile() {
+            return {
+                x: player.x + player.width,
+                y: player.y + player.height / 2,
+                width: 10,
+                height: 5,
+                speed: 7
+            };
+        }
+
+        const bullet = {
+            x: 0,
+            y: 0,
+            width: 10,
+            height: 5,
+            speed: 7,
+            isActive: false,
+            direction: 1
+        };
+
+        const keys = {}; // Adicionar objeto para rastrear teclas pressionadas
+
+        // Adicionar event listener para keydown
+        document.addEventListener('keydown', (e) => {
+            keys[e.code] = true;
+        });
+
+        // Event listeners para controles
+        document.addEventListener('keyup', (e) => {
+            keys[e.code] = false;
+        });
+
+        // Função principal do jogo
+        function gameLoop() {
+            // Limpar o canvas com fundo preto
+            ctx.fillStyle = 'black';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Movimentação do jogador
+            if (keys['ArrowLeft'] && player.x > 0) {
+                player.x -= player.speed;
+                player.direction = -1;
+            }
+            if (keys['ArrowRight'] && player.x < canvas.width - player.width) {
+                player.x += player.speed;
+                player.direction = 1;
+            }
+            if (keys['Space'] && !player.jumping) {
+                player.jumping = true;
+                player.verticalVelocity = -player.jumpStrength;
+            }
+
+            // Aplicar gravidade
+            player.verticalVelocity += 0.5;
+            player.y += player.verticalVelocity;
+
+            // Verificar colisão com o chão
+            if (player.y > canvas.height - player.height) {
+                player.y = canvas.height - player.height;
+                player.verticalVelocity = 0;
+                player.jumping = false;
+            }
+
+            // Atirar
+            if (keys['KeyX'] && !bullet.isActive) {
+                bullet.x = player.direction === 1 ? player.x + player.width : player.x;
+                bullet.y = player.y + player.height / 2;
+                bullet.isActive = true;
+                bullet.direction = player.direction;
+            }
+
+            // Movimentação do projétil
+            if (bullet.isActive) {
+                bullet.x += bullet.speed * bullet.direction;
+                if (bullet.x > canvas.width || bullet.x < 0) {
+                    bullet.isActive = false;
+                }
+            }
+
+            // Movimentação do inimigo (perseguindo o jogador)
+            if (player.x < enemy.x) {
+                enemy.x -= enemy.speed;
+            } else if (player.x > enemy.x) {
+                enemy.x += enemy.speed;
+            }
+
+            // Manter o inimigo dentro dos limites do canvas
+            enemy.x = Math.max(0, Math.min(canvas.width - enemy.width, enemy.x));
+
+            // Verificar colisão entre jogador e inimigo
+            if (player.x < enemy.x + enemy.width &&
+                player.x + player.width > enemy.x &&
+                player.y < enemy.y + enemy.height &&
+                player.y + player.height > enemy.y) {
+                // Colisão detectada
+                player.lives -= 1; // Decrease player lives
+                if (player.lives <= 0) {
+                    // Game over
+                    alert("Game Over!");
+                    return;
+                }
+                player.x = Math.random() < 0.5 ? -player.width : canvas.width; // Reposiciona o jogador
+            }
+
+            // Desenhar jogador
+            ctx.fillStyle = 'blue';
+            ctx.fillRect(player.x, player.y, player.width, player.height);
+
+            // Desenhar inimigo
+            ctx.fillStyle = 'red';
+            ctx.fillRect(enemy.x, enemy.y, enemy.width, enemy.height);
+
+            // Desenhar projétil
+            if (bullet.isActive) {
+                ctx.fillStyle = 'yellow';
+                ctx.fillRect(bullet.x, bullet.y, bullet.width, bullet.height);
+            }
+
+            // Verificar colisão entre projétil e inimigo
+            if (bullet.isActive &&
+                bullet.x < enemy.x + enemy.width &&
+                bullet.x + bullet.width > enemy.x &&
+                bullet.y < enemy.y + enemy.height &&
+                bullet.y + bullet.height > enemy.y) {
+                // Colisão detectada
+                bullet.isActive = false;
+                enemy.x = Math.random() < 0.5 ? -enemy.width : canvas.width; // Reposiciona o inimigo
+            }
+
+            // Atualizar e desenhar projéteis
+            for (let i = projectiles.length - 1; i >= 0; i--) {
+                const projectile = projectiles[i];
+                projectile.x += projectile.speed;
+
+                // Remover projéteis fora da tela
+                if (projectile.x > canvas.width) {
+                    projectiles.splice(i, 1);
+                } else {
+                    ctx.fillStyle = 'yellow';
+                    ctx.fillRect(projectile.x, projectile.y, projectile.width, projectile.height);
+                }
+            }
+
+            // Desenhar vidas do jogador
+            ctx.fillStyle = 'white';
+            ctx.font = '20px Arial';
+            ctx.fillText(`Vidas: ${player.lives}`, 10, 30);
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        gameLoop();
+    </script>
+</body>
+</html>
