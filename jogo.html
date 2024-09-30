@@ -5,140 +5,328 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Jogo de Plataforma 2D</title>
     <style>
-        body {
-            background-color: black;
-            margin: 0;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-        }
-        canvas {
-            border: 1px solid white;
-        }
+        body { margin: 0; overflow: hidden; display: flex; justify-content: center; align-items: center; height: 100vh; background: black; }
+        canvas { border: 1px solid white; }
     </style>
 </head>
 <body>
-    <canvas id="gameCanvas" width="1200" height="600"></canvas>
+    <canvas id="gameCanvas"></canvas>
     <script>
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
 
-        // Jogador
+        const GAME_WIDTH = 2400;
+        const GAME_HEIGHT = 800;
+        canvas.width = 1200;
+        canvas.height = 600;
+        ctx.scale(0.5, 0.5);
+
         const player = {
-            x: 50,
-            y: canvas.height - 50,
-            width: 30,
-            height: 30,
-            speed: 5,
-            jumping: false,
-            jumpStrength: 15,
-            verticalVelocity: 0,
-            lives: 3,
-            canShoot: true,
-            shootCooldown: 500,
-            direction: 1,
-            charging: false,
-            chargeTime: 0,
-            maxChargeTime: 1000
+            x: GAME_WIDTH / 2, y: GAME_HEIGHT - 80, width: 30, height: 30,
+            speed: 5, jumpStrength: 15, verticalVelocity: 0, lives: 3,
+            canShoot: true, shootCooldown: 500, direction: 1,
+            charging: false, chargeTime: 0, maxChargeTime: 1000,
+            isCharging: false,
         };
 
-        // Sistema de ondas
+        const bullet = { x: 0, y: 0, width: 10, height: 5, speed: 10, isActive: false, direction: 1, damage: 20, baseDamage: 10, maxDamage: 50 };
+
         let currentWave = 1;
         let enemiesDefeated = 0;
-        const enemiesPerWave = 5;
-
-        // Robôs
         const robots = [];
-
-        // Plataformas
         const platforms = [
-            {x: 200, y: 500, width: 200, height: 20},
-            {x: 500, y: 400, width: 200, height: 20},
-            {x: 800, y: 300, width: 200, height: 20},
-            {x: 300, y: 200, width: 200, height: 20},
-            {x: 700, y: 150, width: 200, height: 20}
+            {x: 400, y: 650, width: 200, height: 20},
+            {x: 800, y: 550, width: 200, height: 20},
+            {x: 1200, y: 450, width: 200, height: 20},
+            {x: 1600, y: 350, width: 200, height: 20},
+            {x: 2000, y: 250, width: 200, height: 20},
+            {x: 600, y: 150, width: 200, height: 20},
+            {x: 1000, y: 100, width: 200, height: 20},
+            {x: 1400, y: 200, width: 200, height: 20},
+            {x: 1800, y: 300, width: 200, height: 20}
         ];
 
-        // Função para criar um novo robô
-        function createRobot(isStrong) {
-            const baseHealth = isStrong ? 50 : 10;
-            const healthIncrease = currentWave - 1;
-            const health = baseHealth + healthIncrease * (isStrong ? 10 : 2);
+        const ground = { y: GAME_HEIGHT - 30, height: 30 };
 
+        const keys = {};
+        document.addEventListener('keydown', (e) => keys[e.code] = true);
+        document.addEventListener('keyup', (e) => keys[e.code] = false);
+
+        // Adicione esta nova constante para o chefe
+        const boss = {
+            x: GAME_WIDTH / 2,
+            y: ground.y - 100,
+            width: 80,
+            height: 100,
+            speed: 3,
+            jumpStrength: 25,
+            health: 500,
+            maxHealth: 500,
+            verticalVelocity: 0,
+            direction: 1,
+            color: 'purple',
+            active: false,
+            barWidth: 200, // Largura da barra de vida
+            barHeight: 20, // Altura da barra de vida
+        };
+
+        function createRobot(isStrong) {
+            const baseHealth = isStrong ? 50 : 20;
+            const health = baseHealth + (isStrong ? (currentWave - 1) * 10 : 0);
             return {
-                x: Math.random() < 0.5 ? -30 : canvas.width,
-                y: canvas.height - (isStrong ? 60 : 40),
-                width: isStrong ? 40 : 30,
-                height: isStrong ? 60 : 40,
-                speed: isStrong ? 2 : 1,
-                health: health,
-                maxHealth: health,
-                isStrong: isStrong,
+                x: Math.random() < 0.5 ? -30 : GAME_WIDTH,
+                y: ground.y - (isStrong ? 60 : 40),
+                width: isStrong ? 40 : 30, height: isStrong ? 60 : 40,
+                speed: isStrong ? 2 : 1, jumpStrength: isStrong ? 20 : 18,
+                health: health, maxHealth: health, isStrong: isStrong,
                 color: isStrong ? 'red' : 'orange',
-                verticalVelocity: 0,
-                jumping: false
+                verticalVelocity: 0, direction: 1
             };
         }
 
-        // Inicializar robôs para a primeira onda
-        function initializeWave() {
-            robots.length = 0;
-            const strongRobots = Math.floor(currentWave / 3);
-            for (let i = 0; i < enemiesPerWave; i++) {
-                robots.push(createRobot(i < strongRobots));
+        function moveObject(obj) {
+            if (obj === player) {
+                if (keys['ArrowLeft']) { obj.x -= obj.speed; obj.direction = -1; }
+                if (keys['ArrowRight']) { obj.x += obj.speed; obj.direction = 1; }
+                if (keys['Space'] && isOnGround(obj)) { obj.verticalVelocity = -obj.jumpStrength; }
+            } else {
+                obj.x += obj.speed * (obj.x < player.x ? 1 : -1);
+                if (isOnGround(obj) && Math.random() < 0.01) { obj.verticalVelocity = -obj.jumpStrength; }
+            }
+            obj.x = Math.max(0, Math.min(GAME_WIDTH - obj.width, obj.x));
+            obj.verticalVelocity += 0.6;
+            obj.y += obj.verticalVelocity;
+            for (let platform of platforms) {
+                if (obj.x < platform.x + platform.width && obj.x + obj.width > platform.x &&
+                    obj.y + obj.height >= platform.y && obj.y + obj.height <= platform.y + platform.height / 2) {
+                    obj.y = platform.y - obj.height;
+                    obj.verticalVelocity = 0;
+                    break;
+                }
+            }
+            if (obj.y + obj.height > ground.y) {
+                obj.y = ground.y - obj.height;
+                obj.verticalVelocity = 0;
             }
         }
 
-        const bullet = {
-            x: 0,
-            y: 0,
-            width: 10,
-            height: 5,
-            speed: 7,
-            isActive: false,
-            direction: 1,
-            damage: 10
-        };
-
-        const keys = {};
-
-        document.addEventListener('keydown', (e) => {
-            keys[e.code] = true;
-            
-            if (e.code === 'KeyX' && player.canShoot) {
-                player.charging = true;
-                player.chargeTime = 0;
-            }
-        });
-
-        document.addEventListener('keyup', (e) => {
-            keys[e.code] = false;
-            
-            if (e.code === 'KeyX' && player.charging) {
-                shootBullet();
-                player.charging = false;
-            }
-        });
+        function isOnGround(obj) {
+            return obj.y + obj.height >= ground.y || platforms.some(platform => 
+                obj.y + obj.height === platform.y &&
+                obj.x < platform.x + platform.width &&
+                obj.x + obj.width > platform.x
+            );
+        }
 
         function shootBullet() {
-            bullet.x = player.direction === 1 ? player.x + player.width : player.x;
-            bullet.y = player.y + player.height / 2;
-            bullet.isActive = true;
-            bullet.direction = player.direction;
-            
-            let chargeFactor = Math.min(player.chargeTime / player.maxChargeTime, 1);
-            bullet.damage = 10 + Math.floor(chargeFactor * 40);
-            
-            player.canShoot = false;
-            setTimeout(() => {
-                player.canShoot = true;
-            }, player.shootCooldown);
+            if (player.canShoot) {
+                bullet.x = player.x + (player.direction === 1 ? player.width : 0);
+                bullet.y = player.y + player.height / 2;
+                bullet.isActive = true;
+                bullet.direction = player.direction;
+                let chargeFactor = Math.min(player.chargeTime / player.maxChargeTime, 1);
+                bullet.damage = 20 + Math.floor(chargeFactor * 60);
+                player.canShoot = false;
+                setTimeout(() => { player.canShoot = true; }, player.shootCooldown);
+                player.charging = false;
+                player.chargeTime = 0;
+            }
+        }
+
+        function updateBullet() {
+            if (bullet.isActive) {
+                bullet.x += bullet.speed * bullet.direction;
+                if (bullet.x < 0 || bullet.x > GAME_WIDTH) bullet.isActive = false;
+            }
+        }
+
+        function initializeWave() {
+            robots.length = 0;
+            if (currentWave === 10) {
+                boss.active = true;
+                boss.health = boss.maxHealth;
+            } else {
+                const enemiesPerWave = Math.min(3 + Math.floor(currentWave / 2), 10);
+                const strongRobots = Math.min(Math.floor(currentWave / 3), 5);
+                for (let i = 0; i < enemiesPerWave; i++) {
+                    robots.push(createRobot(i < strongRobots));
+                }
+            }
+        }
+
+        let lastTime = 0;
+
+        function gameLoop(currentTime) {
+            const deltaTime = currentTime - lastTime;
+            lastTime = currentTime;
+
+            ctx.fillStyle = 'black';
+            ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+
+            const cameraX = Math.max(0, Math.min(player.x - GAME_WIDTH / 4, GAME_WIDTH / 2));
+            ctx.save();
+            ctx.translate(-cameraX, 0);
+
+            ctx.fillStyle = 'gray';
+            for (let platform of platforms) {
+                ctx.fillRect(platform.x, platform.y, platform.width, platform.height);
+            }
+
+            ctx.fillStyle = 'gray';
+            ctx.fillRect(0, ground.y, GAME_WIDTH, ground.height);
+
+            moveObject(player);
+            ctx.fillStyle = 'blue';
+            ctx.fillRect(player.x, player.y, player.width, player.height);
+
+            updateBullet();
+            if (bullet.isActive) {
+                ctx.fillStyle = 'yellow';
+                ctx.fillRect(bullet.x, bullet.y, bullet.width, bullet.height);
+            }
+
+            if (boss.active) {
+                moveObject(boss);
+                ctx.fillStyle = boss.color;
+                ctx.fillRect(boss.x, boss.y, boss.width, boss.height);
+
+                // Desenhar a barra de vida do chefe
+                const barX = boss.x + (boss.width - boss.barWidth) / 2;
+                const barY = boss.y - 40;
+
+                // Fundo da barra de vida
+                ctx.fillStyle = 'gray';
+                ctx.fillRect(barX, barY, boss.barWidth, boss.barHeight);
+
+                // Barra de vida atual
+                ctx.fillStyle = 'red';
+                const currentHealthWidth = (boss.health / boss.maxHealth) * boss.barWidth;
+                ctx.fillRect(barX, barY, currentHealthWidth, boss.barHeight);
+
+                // Contorno da barra de vida
+                ctx.strokeStyle = 'black';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(barX, barY, boss.barWidth, boss.barHeight);
+
+                // Texto "Boss"
+                ctx.fillStyle = 'white';
+                ctx.font = 'bold 16px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText('Boss', boss.x + boss.width / 2, barY + boss.barHeight + 20);
+
+                // Resetar alinhamento do texto
+                ctx.textAlign = 'left';
+
+                if (checkCollision(player, boss)) {
+                    player.lives--;
+                    if (player.lives <= 0) {
+                        alert("Game Over!");
+                        reiniciarJogo();
+                    } else {
+                        player.x = GAME_WIDTH / 2;
+                        player.y = GAME_HEIGHT - 80;
+                    }
+                }
+
+                if (bullet.isActive && checkCollision(bullet, boss)) {
+                    bullet.isActive = false;
+                    boss.health -= bullet.damage;
+                    if (boss.health <= 0) {
+                        boss.active = false;
+                        currentWave++;
+                        initializeWave();
+                    }
+                }
+
+                ctx.fillStyle = 'red';
+                let bossHealthWidth = (boss.health / boss.maxHealth) * boss.width;
+                ctx.fillRect(boss.x, boss.y - 20, bossHealthWidth, 10);
+            }
+
+            robots.forEach((robot, index) => {
+                moveObject(robot);
+                ctx.fillStyle = robot.color;
+                ctx.fillRect(robot.x, robot.y, robot.width, robot.height);
+
+                if (checkCollision(player, robot)) {
+                    player.lives--;
+                    if (player.lives <= 0) {
+                        alert("Game Over!");
+                        reiniciarJogo();
+                    } else {
+                        player.x = GAME_WIDTH / 2;
+                        player.y = GAME_HEIGHT - 80;
+                        robots[index] = createRobot(robot.isStrong);
+                    }
+                }
+
+                if (bullet.isActive && checkCollision(bullet, robot)) {
+                    bullet.isActive = false;
+                    robot.health -= bullet.damage;
+                    if (robot.health <= 0) {
+                        robots.splice(index, 1);
+                        enemiesDefeated++;
+                        if (robots.length === 0) {
+                            currentWave++;
+                            initializeWave();
+                        }
+                    }
+                }
+
+                ctx.fillStyle = 'green';
+                let healthWidth = (robot.health / robot.maxHealth) * robot.width;
+                ctx.fillRect(robot.x, robot.y - 10, healthWidth, 5);
+            });
+
+            ctx.restore();
+
+            ctx.fillStyle = 'white';
+            ctx.font = '20px Arial';
+            ctx.fillText(`Vidas: ${player.lives}`, 10, 30);
+            ctx.fillText(`Onda: ${currentWave}`, 10, 60);
+            if (boss.active) {
+                ctx.fillText(`Chefe HP: ${boss.health}/${boss.maxHealth}`, 10, 90);
+            } else {
+                ctx.fillText(`Inimigos: ${robots.length}`, 10, 90);
+            }
+
+            if (!player.canShoot) {
+                ctx.fillStyle = 'gray';
+                ctx.fillRect(10, 100, 100, 10);
+                ctx.fillStyle = 'orange';
+                ctx.fillRect(10, 100, 100 * (1 - (Date.now() % player.shootCooldown) / player.shootCooldown), 10);
+            }
+
+            if (keys.KeyX) {
+                if (!player.isCharging) {
+                    player.isCharging = true;
+                    player.chargeTime = 0;
+                } else {
+                    player.chargeTime = Math.min(player.chargeTime + deltaTime, player.maxChargeTime);
+                }
+            } else if (player.isCharging) {
+                fireBullet();
+                player.isCharging = false;
+            }
+
+            // Desenhar barra de carga
+            if (player.isCharging) {
+                const chargePercentage = player.chargeTime / player.maxChargeTime;
+                ctx.fillStyle = 'yellow';
+                ctx.fillRect(player.x, player.y - 20, player.width * chargePercentage, 5);
+            }
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        function checkCollision(obj1, obj2) {
+            return obj1.x < obj2.x + obj2.width && obj1.x + obj1.width > obj2.x &&
+                   obj1.y < obj2.y + obj2.height && obj1.y + obj1.height > obj2.y;
         }
 
         function reiniciarJogo() {
-            player.x = 50;
-            player.y = canvas.height - 50;
+            player.x = GAME_WIDTH / 2;
+            player.y = GAME_HEIGHT - 80;
             player.lives = 3;
             player.canShoot = true;
             player.direction = 1;
@@ -147,203 +335,49 @@
             player.chargeTime = 0;
             currentWave = 1;
             enemiesDefeated = 0;
+            boss.active = false;
             initializeWave();
         }
 
-        function checkCollision(obj, platform) {
-            return obj.x < platform.x + platform.width &&
-                   obj.x + obj.width > platform.x &&
-                   obj.y < platform.y + platform.height &&
-                   obj.y + obj.height > platform.y;
-        }
-
-        function applyGravity(obj) {
-            obj.verticalVelocity += 0.5;
-            obj.y += obj.verticalVelocity;
-
-            let onPlatform = false;
-            for (let platform of platforms) {
-                if (checkCollision(obj, platform) && obj.verticalVelocity > 0) {
-                    obj.y = platform.y - obj.height;
-                    obj.verticalVelocity = 0;
-                    obj.jumping = false;
-                    onPlatform = true;
-                    break;
-                }
-            }
-
-            if (obj.y > canvas.height - obj.height && !onPlatform) {
-                obj.y = canvas.height - obj.height;
-                obj.verticalVelocity = 0;
-                obj.jumping = false;
+        function fireBullet() {
+            if (!bullet.isActive) {
+                bullet.isActive = true;
+                bullet.x = player.x + player.width / 2;
+                bullet.y = player.y + player.height / 2;
+                
+                const chargePercentage = player.chargeTime / player.maxChargeTime;
+                bullet.damage = bullet.baseDamage + (bullet.maxDamage - bullet.baseDamage) * chargePercentage;
+                
+                bullet.speed = 10 + 10 * chargePercentage; // Aumenta a velocidade do tiro com base na carga
+                bullet.width = 5 + 15 * chargePercentage; // Aumenta o tamanho do tiro com base na carga
+                bullet.height = 5 + 15 * chargePercentage;
             }
         }
 
-        function findNearestPlatform(obj) {
-            let nearestPlatform = null;
-            let minDistance = Infinity;
-
-            for (let platform of platforms) {
-                if (platform.y < obj.y + obj.height) {
-                    let distance = Math.abs(platform.x - obj.x);
-                    if (distance < minDistance) {
-                        minDistance = distance;
-                        nearestPlatform = platform;
-                    }
-                }
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'KeyX' && !player.charging && player.canShoot) {
+                player.charging = true;
+                player.chargeTime = 0;
             }
-
-            return nearestPlatform;
-        }
-
-        function moveObject(obj) {
-            let nearestPlatform = findNearestPlatform(obj);
-
-            // Movimento horizontal
-            if (obj === player) {
-                if (keys['ArrowLeft'] && obj.x > 0) {
-                    obj.x -= obj.speed;
-                    obj.direction = -1;
-                }
-                if (keys['ArrowRight'] && obj.x < canvas.width - obj.width) {
-                    obj.x += obj.speed;
-                    obj.direction = 1;
-                }
-            } else {
-                // Movimento dos robôs
-                if (nearestPlatform && Math.abs(nearestPlatform.x - obj.x) < 100) {
-                    // Se estiver perto de uma plataforma, mova-se em direção a ela
-                    if (nearestPlatform.x > obj.x) {
-                        obj.x += obj.speed;
-                        obj.direction = 1;
-                    } else {
-                        obj.x -= obj.speed;
-                        obj.direction = -1;
-                    }
-
-                    // Se estiver na borda da plataforma, pule
-                    if (Math.abs(nearestPlatform.x - obj.x) < obj.speed * 2 && !obj.jumping) {
-                        obj.jumping = true;
-                        obj.verticalVelocity = -obj.speed * 4;
-                    }
-                } else {
-                    // Caso contrário, mova-se em direção ao jogador
-                    if (player.x < obj.x) {
-                        obj.x -= obj.speed;
-                        obj.direction = -1;
-                    } else if (player.x > obj.x) {
-                        obj.x += obj.speed;
-                        obj.direction = 1;
-                    }
-                }
+            if (e.code === 'Space') {
+                keys.Space = true;
             }
-
-            // Limitar movimento às bordas do mapa
-            obj.x = Math.max(0, Math.min(canvas.width - obj.width, obj.x));
-
-            // Aplicar gravidade
-            applyGravity(obj);
-        }
-
-        function gameLoop() {
-            ctx.fillStyle = 'black';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-            // Desenhar plataformas
-            ctx.fillStyle = 'gray';
-            for (let platform of platforms) {
-                ctx.fillRect(platform.x, platform.y, platform.width, platform.height);
+            if (e.code === 'KeyX') {
+                keys.KeyX = true;
             }
+        });
 
-            // Lógica do jogador
-            if (keys['Space'] && !player.jumping) {
-                player.jumping = true;
-                player.verticalVelocity = -player.jumpStrength;
+        document.addEventListener('keyup', (e) => {
+            if (e.code === 'KeyX' && player.charging) {
+                shootBullet();
             }
-
-            moveObject(player);
-
-            if (player.charging && player.chargeTime < player.maxChargeTime) {
-                player.chargeTime += 16;
+            if (e.code === 'Space') {
+                keys.Space = false;
             }
-
-            if (bullet.isActive) {
-                bullet.x += bullet.speed * bullet.direction;
-                if (bullet.x > canvas.width || bullet.x < 0) {
-                    bullet.isActive = false;
-                }
+            if (e.code === 'KeyX') {
+                keys.KeyX = false;
             }
-
-            // Atualizar e desenhar robôs
-            robots.forEach((robot, index) => {
-                moveObject(robot);
-
-                // Remova a lógica de salto aleatório, pois agora os robôs pulam com base nas plataformas
-
-                ctx.fillStyle = robot.color;
-                ctx.fillRect(robot.x, robot.y, robot.width, robot.height);
-
-                // Colisão com o jogador
-                if (checkCollision(player, robot)) {
-                    player.lives -= 1;
-                    if (player.lives <= 0) {
-                        alert("Game Over!");
-                        reiniciarJogo();
-                    } else {
-                        player.x = 50;
-                        player.y = canvas.height - 50;
-                        robots[index] = createRobot(robot.isStrong);
-                    }
-                }
-
-                // Colisão com o tiro
-                if (bullet.isActive && checkCollision(bullet, robot)) {
-                    bullet.isActive = false;
-                    robot.health -= bullet.damage;
-                    if (robot.health <= 0) {
-                        robots[index] = createRobot(robot.isStrong);
-                        enemiesDefeated++;
-                        if (enemiesDefeated >= enemiesPerWave) {
-                            currentWave++;
-                            enemiesDefeated = 0;
-                            initializeWave();
-                        }
-                    }
-                }
-
-                // Desenha a barra de vida do robô
-                ctx.fillStyle = 'green';
-                let healthWidth = (robot.health / robot.maxHealth) * robot.width;
-                ctx.fillRect(robot.x, robot.y - 10, healthWidth, 5);
-            });
-
-            ctx.fillStyle = 'blue';
-            ctx.fillRect(player.x, player.y, player.width, player.height);
-
-            if (bullet.isActive) {
-                ctx.fillStyle = 'yellow';
-                ctx.fillRect(bullet.x, bullet.y, bullet.width, bullet.height);
-            }
-
-            ctx.fillStyle = 'white';
-            ctx.font = '20px Arial';
-            ctx.fillText(`Vidas: ${player.lives}`, 10, 30);
-            ctx.fillText(`Onda: ${currentWave}`, 10, 50);
-
-            if (!player.canShoot) {
-                ctx.fillStyle = 'gray';
-                ctx.fillRect(player.x, player.y - 10, player.width * (1 - (Date.now() % player.shootCooldown) / player.shootCooldown), 5);
-            }
-
-            // Desenha a barra de carga
-            if (player.charging) {
-                let chargeWidth = (player.chargeTime / player.maxChargeTime) * player.width;
-                ctx.fillStyle = 'orange';
-                ctx.fillRect(player.x, player.y - 15, chargeWidth, 5);
-            }
-
-            requestAnimationFrame(gameLoop);
-        }
+        });
 
         initializeWave();
         gameLoop();
