@@ -7,10 +7,18 @@
     <style>
         body { margin: 0; overflow: hidden; display: flex; justify-content: center; align-items: center; height: 100vh; background: black; }
         canvas { border: 1px solid white; }
+        #gameMenu { position: absolute; background: rgba(0,0,0,0.8); color: white; padding: 20px; text-align: center; }
+        #gameMenu button { display: block; width: 200px; padding: 10px; margin: 10px auto; font-size: 18px; cursor: pointer; }
     </style>
 </head>
 <body>
     <canvas id="gameCanvas"></canvas>
+    <div id="gameMenu">
+        <h1>Jogo de Plataforma 2D</h1>
+        <button id="startButton">Iniciar Jogo</button>
+        <button id="instructionsButton">Instruções</button>
+        <button id="quitButton">Sair</button>
+    </div>
     <script>
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
@@ -27,6 +35,10 @@
             canShoot: true, shootCooldown: 500, direction: 1,
             charging: false, chargeTime: 0, maxChargeTime: 1000,
             isCharging: false,
+            chargedShots: 0,
+            maxChargedShots: 3,
+            overheated: false,
+            overheatCooldown: 3000, // 3 segundos de cooldown
         };
 
         const bullet = { x: 0, y: 0, width: 10, height: 5, speed: 10, isActive: false, direction: 1, damage: 20, baseDamage: 10, maxDamage: 50 };
@@ -155,8 +167,65 @@
         }
 
         let lastTime = 0;
+        let gameState = 'menu';
+        let animationFrameId;
+
+        function showMenu() {
+            document.getElementById('gameMenu').innerHTML = `
+                <h1>Jogo de Plataforma 2D</h1>
+                <button id="startButton">Iniciar Jogo</button>
+                <button id="instructionsButton">Instruções</button>
+                <button id="quitButton">Sair</button>
+            `;
+            document.getElementById('gameMenu').style.display = 'block';
+            addMenuListeners();
+        }
+
+        function hideMenu() {
+            document.getElementById('gameMenu').style.display = 'none';
+        }
+
+        function startGame() {
+            gameState = 'playing';
+            hideMenu();
+            reiniciarJogo();
+            lastTime = performance.now();
+            gameLoop(lastTime);
+        }
+
+        function showInstructions() {
+            document.getElementById('gameMenu').innerHTML = `
+                <h2>Instruções</h2>
+                <p>Use as setas para mover o jogador</p>
+                <p>Pressione Espaço para pular</p>
+                <p>Pressione X para carregar e atirar</p>
+                <button id="backButton">Voltar ao Menu</button>
+            `;
+            addMenuListeners();
+        }
+
+        function addMenuListeners() {
+            const startButton = document.getElementById('startButton');
+            const instructionsButton = document.getElementById('instructionsButton');
+            const quitButton = document.getElementById('quitButton');
+            const backButton = document.getElementById('backButton');
+
+            if (startButton) startButton.addEventListener('click', startGame);
+            if (instructionsButton) instructionsButton.addEventListener('click', showInstructions);
+            if (quitButton) quitButton.addEventListener('click', () => {
+                if (window.confirm('Tem certeza que deseja sair do jogo?')) {
+                    window.close();
+                }
+            });
+            if (backButton) backButton.addEventListener('click', showMenu);
+        }
 
         function gameLoop(currentTime) {
+            if (gameState !== 'playing') {
+                cancelAnimationFrame(animationFrameId);
+                return;
+            }
+
             const deltaTime = currentTime - lastTime;
             lastTime = currentTime;
 
@@ -178,6 +247,13 @@
             moveObject(player);
             ctx.fillStyle = 'blue';
             ctx.fillRect(player.x, player.y, player.width, player.height);
+
+            // Desenhar barra de carga em cima do jogador
+            if (player.isCharging) {
+                const chargePercentage = player.chargeTime / player.maxChargeTime;
+                ctx.fillStyle = 'yellow';
+                ctx.fillRect(player.x, player.y - 10, player.width * chargePercentage, 5);
+            }
 
             updateBullet();
             if (bullet.isActive) {
@@ -298,25 +374,30 @@
             }
 
             if (keys.KeyX) {
-                if (!player.isCharging) {
+                if (!player.isCharging && !player.overheated) {
                     player.isCharging = true;
                     player.chargeTime = 0;
-                } else {
+                } else if (player.isCharging) {
                     player.chargeTime = Math.min(player.chargeTime + deltaTime, player.maxChargeTime);
                 }
             } else if (player.isCharging) {
                 fireBullet();
-                player.isCharging = false;
             }
 
-            // Desenhar barra de carga
-            if (player.isCharging) {
-                const chargePercentage = player.chargeTime / player.maxChargeTime;
-                ctx.fillStyle = 'yellow';
-                ctx.fillRect(player.x, player.y - 20, player.width * chargePercentage, 5);
+            // Desenhar indicador de tiros carregados
+            for (let i = 0; i < player.maxChargedShots; i++) {
+                ctx.fillStyle = i < player.chargedShots ? 'orange' : 'gray';
+                ctx.fillRect(10 + i * 20, 120, 15, 15);
             }
 
-            requestAnimationFrame(gameLoop);
+            // Desenhar indicador de sobrecarga
+            if (player.overheated) {
+                ctx.fillStyle = 'red';
+                ctx.font = '20px Arial';
+                ctx.fillText('SOBRECARREGADO!', 10, 160);
+            }
+
+            animationFrameId = requestAnimationFrame(gameLoop);
         }
 
         function checkCollision(obj1, obj2) {
@@ -340,23 +421,41 @@
         }
 
         function fireBullet() {
-            if (!bullet.isActive) {
+            if (player.canShoot && !player.overheated) {
                 bullet.isActive = true;
-                bullet.x = player.x + player.width / 2;
+                bullet.x = player.x + (player.direction === 1 ? player.width : 0);
                 bullet.y = player.y + player.height / 2;
+                bullet.direction = player.direction;
                 
                 const chargePercentage = player.chargeTime / player.maxChargeTime;
                 bullet.damage = bullet.baseDamage + (bullet.maxDamage - bullet.baseDamage) * chargePercentage;
                 
-                bullet.speed = 10 + 10 * chargePercentage; // Aumenta a velocidade do tiro com base na carga
-                bullet.width = 5 + 15 * chargePercentage; // Aumenta o tamanho do tiro com base na carga
+                bullet.speed = 10 + 10 * chargePercentage;
+                bullet.width = 5 + 15 * chargePercentage;
                 bullet.height = 5 + 15 * chargePercentage;
+
+                player.canShoot = false;
+                setTimeout(() => { player.canShoot = true; }, player.shootCooldown);
+                player.isCharging = false;
+                player.chargeTime = 0;
+
+                // Incrementar o contador de tiros carregados
+                if (chargePercentage > 0.5) {
+                    player.chargedShots++;
+                    if (player.chargedShots >= player.maxChargedShots) {
+                        player.overheated = true;
+                        player.chargedShots = 0;
+                        setTimeout(() => {
+                            player.overheated = false;
+                        }, player.overheatCooldown);
+                    }
+                }
             }
         }
 
         document.addEventListener('keydown', (e) => {
-            if (e.code === 'KeyX' && !player.charging && player.canShoot) {
-                player.charging = true;
+            if (e.code === 'KeyX' && !player.isCharging && player.canShoot && !player.overheated) {
+                player.isCharging = true;
                 player.chargeTime = 0;
             }
             if (e.code === 'Space') {
@@ -368,8 +467,8 @@
         });
 
         document.addEventListener('keyup', (e) => {
-            if (e.code === 'KeyX' && player.charging) {
-                shootBullet();
+            if (e.code === 'KeyX' && player.isCharging) {
+                fireBullet();
             }
             if (e.code === 'Space') {
                 keys.Space = false;
@@ -379,8 +478,16 @@
             }
         });
 
-        initializeWave();
-        gameLoop();
+        // Adicione um evento para pausar o jogo
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Escape' && gameState === 'playing') {
+                gameState = 'menu';
+                showMenu();
+            }
+        });
+
+        // Inicialize o jogo no estado de menu
+        showMenu();
     </script>
 </body>
 </html>
