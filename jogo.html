@@ -23,15 +23,79 @@
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
 
-        const GAME_WIDTH = 2400;
-        const GAME_HEIGHT = 800;
-        canvas.width = 1200;
-        canvas.height = 600;
-        ctx.scale(0.5, 0.5);
+        let GAME_WIDTH = 2400;
+        let GAME_HEIGHT = 800;
+        let SCALE_FACTOR;
+
+        function resizeCanvas() {
+            const windowWidth = window.innerWidth;
+            const windowHeight = window.innerHeight;
+            
+            // Calcule o fator de escala para mostrar o mapa inteiro
+            SCALE_FACTOR = Math.min(windowWidth / GAME_WIDTH, windowHeight / GAME_HEIGHT);
+            
+            // Ajuste o tamanho do canvas usando CSS
+            canvas.style.width = `${GAME_WIDTH * SCALE_FACTOR}px`;
+            canvas.style.height = `${GAME_HEIGHT * SCALE_FACTOR}px`;
+            
+            // Mantenha o tamanho lógico do canvas
+            canvas.width = GAME_WIDTH;
+            canvas.height = GAME_HEIGHT;
+            
+            // Ajuste os objetos do jogo
+            adjustGameObjects();
+        }
+
+        // Adicione esta função após a função resizeCanvas
+        function adjustGameObjects() {
+            // Diminuir ainda mais o tamanho do jogador
+            player.width = GAME_WIDTH * 0.010; // Reduzido para 1.5% da largura do jogo
+            player.height = GAME_HEIGHT * 0.030; // Reduzido para 3.5% da altura do jogo
+            player.speed = GAME_WIDTH * 0.0025; // Ajustado para manter a jogabilidade proporcional
+            player.jumpStrength = GAME_HEIGHT * 0.020; // Aumentado para 2.5% da altura do jogo
+            
+            // Ajustar a posição inicial do jogador para que fique no chão
+            player.y = ground.y - player.height;
+            
+            ground.y = GAME_HEIGHT - GAME_HEIGHT * 0.05;
+            ground.height = GAME_HEIGHT * 0.05;
+            
+            // Ajuste as plataformas
+            platforms.forEach(platform => {
+                platform.width = GAME_WIDTH * 0.08;
+                platform.height = GAME_HEIGHT * 0.02; // Reduzido um pouco para manter a proporção
+            });
+            
+            // Ajustar o tamanho e a velocidade do projétil
+            bullet.width = GAME_WIDTH * 0.004; // 0.4% da largura do jogo
+            bullet.height = GAME_HEIGHT * 0.004; // 0.4% da altura do jogo
+            bullet.speed = GAME_WIDTH * 0.004; // 0.4% da largura do jogo
+            
+            // Ajustar o tamanho dos robôs
+            robots.forEach(robot => {
+                if (robot.isStrong) {
+                    robot.width = GAME_WIDTH * 0.02; // 2% da largura do jogo
+                    robot.height = GAME_HEIGHT * 0.05; // 5% da altura do jogo
+                } else {
+                    robot.width = GAME_WIDTH * 0.015; // 1.5% da largura do jogo
+                    robot.height = GAME_HEIGHT * 0.04; // 4% da altura do jogo
+                }
+            });
+            
+            // Ajustar o tamanho do chefe, se existir
+            if (boss) {
+                boss.width = GAME_WIDTH * 0.03; // 3% da largura do jogo
+                boss.height = GAME_HEIGHT * 0.08; // 8% da altura do jogo
+            }
+            
+            // Reduzir a força do dash
+            player.dashSpeed = GAME_WIDTH * 0.008; // Reduzido de 0.015 para 0.008 (0.8% da largura do jogo por frame)
+        }
 
         const player = {
             x: GAME_WIDTH / 2, y: GAME_HEIGHT - 80, width: 30, height: 30,
-            speed: 5, jumpStrength: 15, verticalVelocity: 0, lives: 3,
+            speed: 5, jumpStrength: 20, // Aumentado de 15 para 20
+            verticalVelocity: 0, lives: 3,
             canShoot: true, shootCooldown: 500, direction: 1,
             charging: false, chargeTime: 0, maxChargeTime: 1000,
             isCharging: false,
@@ -39,6 +103,17 @@
             maxChargedShots: 3,
             overheated: false,
             overheatCooldown: 3000, // 3 segundos de cooldown
+            // Novas propriedades para o dash
+            canDash: true,
+            isDashing: false,
+            dashSpeed: 15,
+            dashDuration: 200,
+            dashCooldown: 1000,
+            // Novas propriedades para o sistema de cansaço
+            maxDashes: 3,
+            dashesUsed: 0,
+            isTired: false,
+            tirednessRecovery: 3000 // 3 segundos para recuperar do cansaço
         };
 
         const bullet = { x: 0, y: 0, width: 10, height: 5, speed: 10, isActive: false, direction: 1, damage: 20, baseDamage: 10, maxDamage: 50 };
@@ -98,9 +173,13 @@
 
         function moveObject(obj) {
             if (obj === player) {
-                if (keys['ArrowLeft']) { obj.x -= obj.speed; obj.direction = -1; }
-                if (keys['ArrowRight']) { obj.x += obj.speed; obj.direction = 1; }
-                if (keys['Space'] && isOnGround(obj)) { obj.verticalVelocity = -obj.jumpStrength; }
+                if (player.isDashing) {
+                    obj.x += obj.dashSpeed * obj.direction;
+                } else {
+                    if (keys['ArrowLeft']) { obj.x -= obj.speed; obj.direction = -1; }
+                    if (keys['ArrowRight']) { obj.x += obj.speed; obj.direction = 1; }
+                    if (keys['Space'] && isOnGround(obj)) { obj.verticalVelocity = -obj.jumpStrength; }
+                }
             } else {
                 obj.x += obj.speed * (obj.x < player.x ? 1 : -1);
                 if (isOnGround(obj) && Math.random() < 0.01) { obj.verticalVelocity = -obj.jumpStrength; }
@@ -188,6 +267,7 @@
         function startGame() {
             gameState = 'playing';
             hideMenu();
+            resizeCanvas();
             reiniciarJogo();
             lastTime = performance.now();
             gameLoop(lastTime);
@@ -195,13 +275,28 @@
 
         function showInstructions() {
             document.getElementById('gameMenu').innerHTML = `
-                <h2>Instruções</h2>
-                <p>Use as setas para mover o jogador</p>
-                <p>Pressione Espaço para pular</p>
-                <p>Pressione X para carregar e atirar</p>
+                <h1>Instruções</h1>
+                <p>Use as setas para mover o jogador:</p>
+                <ul>
+                    <li>← (Seta Esquerda): Mover para a esquerda</li>
+                    <li>→ (Seta Direita): Mover para a direita</li>
+                    <li>Espaço: Pular</li>
+                </ul>
+                <p>Controles de tiro:</p>
+                <ul>
+                    <li>X: Pressione e segure para carregar o tiro, solte para atirar</li>
+                    <li>Cuidado com o superaquecimento após 3 tiros carregados!</li>
+                </ul>
+                <p>Dash:</p>
+                <ul>
+                    <li>Q: Realizar um dash rápido na direção do movimento</li>
+                    <li>Você pode usar o dash ${player.maxDashes} vezes antes de ficar cansado</li>
+                    <li>Após ficar cansado, espere um momento para recuperar o fôlego</li>
+                </ul>
+                <p>Objetivo: Derrote os robôs inimigos e sobreviva às ondas de ataques!</p>
                 <button id="backButton">Voltar ao Menu</button>
             `;
-            addMenuListeners();
+            document.getElementById('backButton').addEventListener('click', showMenu);
         }
 
         function addMenuListeners() {
@@ -230,19 +325,27 @@
             lastTime = currentTime;
 
             ctx.fillStyle = 'black';
-            ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-            const cameraX = Math.max(0, Math.min(player.x - GAME_WIDTH / 4, GAME_WIDTH / 2));
+            // Calcular a posição da câmera
+            const cameraX = Math.max(0, Math.min(player.x - canvas.width / 2, GAME_WIDTH - canvas.width));
+
             ctx.save();
             ctx.translate(-cameraX, 0);
 
+            // Desenhar o fundo
+            ctx.fillStyle = 'skyblue';
+            ctx.fillRect(cameraX, 0, canvas.width, GAME_HEIGHT);
+
             ctx.fillStyle = 'gray';
             for (let platform of platforms) {
-                ctx.fillRect(platform.x, platform.y, platform.width, platform.height);
+                if (platform.x + platform.width > cameraX && platform.x < cameraX + canvas.width) {
+                    ctx.fillRect(platform.x, platform.y, platform.width, platform.height);
+                }
             }
 
             ctx.fillStyle = 'gray';
-            ctx.fillRect(0, ground.y, GAME_WIDTH, ground.height);
+            ctx.fillRect(cameraX, ground.y, canvas.width, ground.height);
 
             moveObject(player);
             ctx.fillStyle = 'blue';
@@ -397,6 +500,38 @@
                 ctx.fillText('SOBRECARREGADO!', 10, 160);
             }
 
+            // Adicione esta verificação dentro do gameLoop
+            if (player.isDashing) {
+                player.dashDuration -= deltaTime;
+                if (player.dashDuration <= 0) {
+                    player.isDashing = false;
+                    player.dashDuration = 200; // Resetar a duração do dash
+                    player.dashesUsed++;
+                    if (player.dashesUsed >= player.maxDashes) {
+                        player.isTired = true;
+                        player.dashesUsed = 0;
+                        setTimeout(() => {
+                            player.isTired = false;
+                        }, player.tirednessRecovery);
+                    }
+                    player.canDash = false;
+                    setTimeout(() => { player.canDash = true; }, player.dashCooldown);
+                }
+            }
+
+            // Desenhar indicador de dashes disponíveis
+            for (let i = 0; i < player.maxDashes; i++) {
+                ctx.fillStyle = i < player.dashesUsed ? 'red' : 'blue';
+                ctx.fillRect(10 + i * 20, 150, 15, 15);
+            }
+
+            // Desenhar indicador de cansaço
+            if (player.isTired) {
+                ctx.fillStyle = 'red';
+                ctx.font = '20px Arial';
+                ctx.fillText('CANSADO!', 10, 190);
+            }
+
             animationFrameId = requestAnimationFrame(gameLoop);
         }
 
@@ -464,6 +599,12 @@
             if (e.code === 'KeyX') {
                 keys.KeyX = true;
             }
+            if (e.code === 'KeyQ') {
+                if (player.canDash && !player.isDashing && !player.isTired) {
+                    player.isDashing = true;
+                    player.canDash = false;
+                }
+            }
         });
 
         document.addEventListener('keyup', (e) => {
@@ -485,6 +626,10 @@
                 showMenu();
             }
         });
+
+        // Adicione um listener de redimensionamento e chame resizeCanvas no início
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
 
         // Inicialize o jogo no estado de menu
         showMenu();
