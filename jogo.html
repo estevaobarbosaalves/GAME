@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Jogo de Plataforma 2D</title>
+    <title>Robots Frenzy</title>
     <style>
         body { margin: 0; overflow: hidden; display: flex; justify-content: center; align-items: center; height: 100vh; background: black; }
         canvas { border: 1px solid white; }
@@ -26,6 +26,28 @@
         let GAME_WIDTH = 2400;
         let GAME_HEIGHT = 800;
         let SCALE_FACTOR;
+
+        // Adicione estas variáveis globais no início do seu script
+        let konamiCode = ['ArrowUp', 'ArrowUp', 'ArrowDown', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ArrowLeft', 'ArrowRight', 'KeyB', 'KeyA'];
+        let konamiIndex = 0;
+        let easterEggActivated = false;
+
+        // Adicione esta função para verificar o código Konami
+        function checkKonamiCode(e) {
+            if (e.code === konamiCode[konamiIndex]) {
+                konamiIndex++;
+                if (konamiIndex === konamiCode.length) {
+                    easterEggActivated = true;
+                    showMenu(); // Atualiza o menu com a opção de seleção de wave
+                    konamiIndex = 0; // Reseta o índice para permitir nova entrada do código
+                }
+            } else {
+                konamiIndex = 0;
+            }
+        }
+
+        // Adicione este event listener no início do seu script
+        document.addEventListener('keydown', checkKonamiCode);
 
         function resizeCanvas() {
             const windowWidth = window.innerWidth;
@@ -67,8 +89,7 @@
             });
             
             // Ajustar o tamanho e a velocidade do projétil
-            bullet.width = GAME_WIDTH * 0.004; // 0.4% da largura do jogo
-            bullet.height = GAME_HEIGHT * 0.004; // 0.4% da altura do jogo
+            bullet.radius = GAME_WIDTH * 0.004; // 0.4% da largura do jogo
             bullet.speed = GAME_WIDTH * 0.004; // 0.4% da largura do jogo
             
             // Ajustar o tamanho dos robôs
@@ -116,7 +137,7 @@
             tirednessRecovery: 3000 // 3 segundos para recuperar do cansaço
         };
 
-        const bullet = { x: 0, y: 0, width: 10, height: 5, speed: 10, isActive: false, direction: 1, damage: 20, baseDamage: 10, maxDamage: 50 };
+        const bullet = { x: 0, y: 0, radius: 5, speed: 10, isActive: false, direction: 1, damage: 20, baseDamage: 10, maxDamage: 50 };
 
         let currentWave = 1;
         let enemiesDefeated = 0;
@@ -157,6 +178,7 @@
             barHeight: 20, // Altura da barra de vida
         };
 
+        // Modifique a função createRobot para incluir uma propriedade de animação
         function createRobot(isStrong) {
             const baseHealth = isStrong ? 50 : 20;
             const health = baseHealth + (isStrong ? (currentWave - 1) * 10 : 0);
@@ -167,7 +189,9 @@
                 speed: isStrong ? 2 : 1, jumpStrength: isStrong ? 20 : 18,
                 health: health, maxHealth: health, isStrong: isStrong,
                 color: isStrong ? 'red' : 'orange',
-                verticalVelocity: 0, direction: 1
+                verticalVelocity: 0, direction: 1,
+                animationFrame: 0, // Nova propriedade para controlar a animação
+                animationTimer: 0 // Timer para controlar a velocidade da animação
             };
         }
 
@@ -179,6 +203,17 @@
                     if (keys['ArrowLeft']) { obj.x -= obj.speed; obj.direction = -1; }
                     if (keys['ArrowRight']) { obj.x += obj.speed; obj.direction = 1; }
                     if (keys['Space'] && isOnGround(obj)) { obj.verticalVelocity = -obj.jumpStrength; }
+                }
+            } else if (obj === boss) {
+                // Lógica de movimento do chefe
+                if (Math.abs(player.x - boss.x) > 100) { // Mova em direção ao jogador se estiver longe
+                    boss.x += boss.speed * (player.x > boss.x ? 1 : -1);
+                }
+                boss.direction = player.x > boss.x ? 1 : -1; // Atualize a direção do chefe
+
+                // Lógica de salto do chefe
+                if (isOnGround(boss) && Math.random() < 0.02) { // 2% de chance de pular quando no chão
+                    boss.verticalVelocity = -boss.jumpStrength;
                 }
             } else {
                 obj.x += obj.speed * (obj.x < player.x ? 1 : -1);
@@ -227,7 +262,7 @@
         function updateBullet() {
             if (bullet.isActive) {
                 bullet.x += bullet.speed * bullet.direction;
-                if (bullet.x < 0 || bullet.x > GAME_WIDTH) bullet.isActive = false;
+                if (bullet.x - bullet.radius < 0 || bullet.x + bullet.radius > GAME_WIDTH) bullet.isActive = false;
             }
         }
 
@@ -236,6 +271,24 @@
             if (currentWave === 10) {
                 boss.active = true;
                 boss.health = boss.maxHealth;
+                
+                // Lógica para spawnar o chefe longe do jogador
+                const minDistance = GAME_WIDTH / 3; // Distância mínima do jogador
+                let bossX;
+                
+                if (player.x < GAME_WIDTH / 2) {
+                    // Se o jogador estiver na metade esquerda, spawna o chefe na direita
+                    bossX = Math.random() * (GAME_WIDTH / 2) + GAME_WIDTH / 2;
+                } else {
+                    // Se o jogador estiver na metade direita, spawna o chefe na esquerda
+                    bossX = Math.random() * (GAME_WIDTH / 2);
+                }
+                
+                // Garante que o chefe não spawne muito perto das bordas
+                bossX = Math.max(boss.width, Math.min(bossX, GAME_WIDTH - boss.width));
+                
+                boss.x = bossX;
+                boss.y = ground.y - boss.height; // Coloca o chefe no chão
             } else {
                 const enemiesPerWave = Math.min(3 + Math.floor(currentWave / 2), 10);
                 const strongRobots = Math.min(Math.floor(currentWave / 3), 5);
@@ -250,12 +303,25 @@
         let animationFrameId;
 
         function showMenu() {
-            document.getElementById('gameMenu').innerHTML = `
-                <h1>Jogo de Plataforma 2D</h1>
+            gameState = 'menu';
+            let menuHTML = `
+                <h1>Robots Frenzy</h1>
                 <button id="startButton">Iniciar Jogo</button>
                 <button id="instructionsButton">Instruções</button>
                 <button id="quitButton">Sair</button>
             `;
+            
+            if (easterEggActivated) {
+                menuHTML += `
+                    <div id="waveSelector" style="margin-top: 20px;">
+                        <h3>Selecione a Wave Inicial (1-10):</h3>
+                        <input type="number" id="waveInput" min="1" max="10" value="1">
+                        <button id="selectWaveButton">Iniciar na Wave Selecionada</button>
+                    </div>
+                `;
+            }
+            
+            document.getElementById('gameMenu').innerHTML = menuHTML;
             document.getElementById('gameMenu').style.display = 'block';
             addMenuListeners();
         }
@@ -268,7 +334,7 @@
             gameState = 'playing';
             hideMenu();
             resizeCanvas();
-            reiniciarJogo();
+            reiniciarJogo(currentWave); // Modifique esta função para aceitar a wave inicial
             lastTime = performance.now();
             gameLoop(lastTime);
         }
@@ -313,8 +379,88 @@
                 }
             });
             if (backButton) backButton.addEventListener('click', showMenu);
+
+            if (easterEggActivated) {
+                const selectWaveButton = document.getElementById('selectWaveButton');
+                if (selectWaveButton) {
+                    selectWaveButton.addEventListener('click', () => {
+                        const selectedWave = parseInt(document.getElementById('waveInput').value);
+                        if (selectedWave >= 1 && selectedWave <= 10) {
+                            currentWave = selectedWave;
+                            startGame();
+                        } else {
+                            alert('Por favor, selecione uma wave entre 1 e 10.');
+                        }
+                    });
+                }
+            }
         }
 
+        // Modifique a função drawWeakRobotSprite para incluir a animação
+        function drawWeakRobotSprite(ctx, robot) {
+            const originalWidth = 7;
+            const originalHeight = 9;
+            const scale = Math.min(robot.width / originalWidth, robot.height / originalHeight);
+            
+            ctx.save();
+            ctx.translate(robot.x, robot.y);
+            ctx.scale(scale, scale);
+            
+            // Corpo principal (cinza escuro)
+            ctx.fillStyle = '#2D2D2D';
+            ctx.fillRect(1, 2, 5, 6);
+            
+            // Cabeça (cinza claro)
+            ctx.fillStyle = '#9B9B9B';
+            ctx.fillRect(0, 0, 7, 3);
+            
+            // Antena
+            ctx.fillStyle = '#2D2D2D';
+            ctx.fillRect(1, 0, 1, 1);
+            
+            // Olhos
+            ctx.fillStyle = '#4A4A4A';
+            ctx.fillRect(2, 1, 1, 1);
+            ctx.fillRect(4, 1, 1, 1);
+            
+            // Boca
+            ctx.fillRect(3, 2, 1, 1);
+            
+            // Pernas (animadas)
+            if (robot.animationFrame === 0) {
+                ctx.fillRect(1, 8, 2, 1);
+                ctx.fillRect(4, 8, 2, 1);
+            } else {
+                ctx.fillRect(0, 8, 2, 1);
+                ctx.fillRect(5, 8, 2, 1);
+            }
+            
+            ctx.restore();
+        }
+
+        // Adicione esta nova função para desenhar a bola de energia
+        function drawChargeBall(ctx, player, chargePercentage) {
+            const maxRadius = player.width / 2;
+            const radius = maxRadius * chargePercentage;
+            let centerX, centerY;
+
+            if (player.direction === 1) { // Jogador olhando para a direita
+                centerX = player.x + player.width + radius;
+            } else { // Jogador olhando para a esquerda
+                centerX = player.x - radius;
+            }
+            centerY = player.y + player.height / 2;
+
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(255, 255, 0, ${chargePercentage})`;
+            ctx.fill();
+            ctx.strokeStyle = 'orange';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+        }
+
+        // No gameLoop, adicione a lógica de animação
         function gameLoop(currentTime) {
             if (gameState !== 'playing') {
                 cancelAnimationFrame(animationFrameId);
@@ -351,17 +497,21 @@
             ctx.fillStyle = 'blue';
             ctx.fillRect(player.x, player.y, player.width, player.height);
 
-            // Desenhar barra de carga em cima do jogador
+            // Desenhar a bola de energia se estiver carregando
             if (player.isCharging) {
                 const chargePercentage = player.chargeTime / player.maxChargeTime;
-                ctx.fillStyle = 'yellow';
-                ctx.fillRect(player.x, player.y - 10, player.width * chargePercentage, 5);
+                drawChargeBall(ctx, player, chargePercentage);
             }
 
             updateBullet();
             if (bullet.isActive) {
+                ctx.beginPath();
+                ctx.arc(bullet.x, bullet.y, bullet.radius, 0, Math.PI * 2);
                 ctx.fillStyle = 'yellow';
-                ctx.fillRect(bullet.x, bullet.y, bullet.width, bullet.height);
+                ctx.fill();
+                ctx.strokeStyle = 'orange';
+                ctx.lineWidth = 2;
+                ctx.stroke();
             }
 
             if (boss.active) {
@@ -399,8 +549,8 @@
                 if (checkCollision(player, boss)) {
                     player.lives--;
                     if (player.lives <= 0) {
-                        alert("Game Over!");
-                        reiniciarJogo();
+                        gameOver();
+                        return;
                     } else {
                         player.x = GAME_WIDTH / 2;
                         player.y = GAME_HEIGHT - 80;
@@ -412,26 +562,39 @@
                     boss.health -= bullet.damage;
                     if (boss.health <= 0) {
                         boss.active = false;
-                        currentWave++;
-                        initializeWave();
+                        if (currentWave === 10) {
+                            gameState = 'victory'; // Muda o estado do jogo para vitória
+                            showVictoryScreen(); // Chama a tela de vitória
+                        } else {
+                            currentWave++;
+                            initializeWave();
+                        }
                     }
                 }
-
-                ctx.fillStyle = 'red';
-                let bossHealthWidth = (boss.health / boss.maxHealth) * boss.width;
-                ctx.fillRect(boss.x, boss.y - 20, bossHealthWidth, 10);
             }
 
             robots.forEach((robot, index) => {
                 moveObject(robot);
-                ctx.fillStyle = robot.color;
-                ctx.fillRect(robot.x, robot.y, robot.width, robot.height);
+                
+                // Atualizar a animação
+                robot.animationTimer += deltaTime;
+                if (robot.animationTimer > 200) { // Muda a cada 200ms
+                    robot.animationFrame = 1 - robot.animationFrame; // Alterna entre 0 e 1
+                    robot.animationTimer = 0;
+                }
+                
+                if (robot.isStrong) {
+                    ctx.fillStyle = robot.color;
+                    ctx.fillRect(robot.x, robot.y, robot.width, robot.height);
+                } else {
+                    drawWeakRobotSprite(ctx, robot);
+                }
 
                 if (checkCollision(player, robot)) {
                     player.lives--;
                     if (player.lives <= 0) {
-                        alert("Game Over!");
-                        reiniciarJogo();
+                        gameOver();
+                        return;
                     } else {
                         player.x = GAME_WIDTH / 2;
                         player.y = GAME_HEIGHT - 80;
@@ -469,12 +632,7 @@
                 ctx.fillText(`Inimigos: ${robots.length}`, 10, 90);
             }
 
-            if (!player.canShoot) {
-                ctx.fillStyle = 'gray';
-                ctx.fillRect(10, 100, 100, 10);
-                ctx.fillStyle = 'orange';
-                ctx.fillRect(10, 100, 100 * (1 - (Date.now() % player.shootCooldown) / player.shootCooldown), 10);
-            }
+            // Removido o indicador de cooldown de tiro
 
             if (keys.KeyX) {
                 if (!player.isCharging && !player.overheated) {
@@ -493,11 +651,24 @@
                 ctx.fillRect(10 + i * 20, 120, 15, 15);
             }
 
-            // Desenhar indicador de sobrecarga
+            // Ajustar o tamanho e a posição do texto de sobrecarga
             if (player.overheated) {
                 ctx.fillStyle = 'red';
-                ctx.font = '20px Arial';
-                ctx.fillText('SOBRECARREGADO!', 10, 160);
+                ctx.font = '14px Arial';
+                ctx.fillText('SOBRECARREGADO!', 10, 110);
+            }
+
+            // Desenhar indicador de dashes disponíveis
+            for (let i = 0; i < player.maxDashes; i++) {
+                ctx.fillStyle = i < player.dashesUsed ? 'red' : 'blue';
+                ctx.fillRect(10 + i * 20, 150, 15, 15);
+            }
+
+            // Desenhar indicador de cansaço
+            if (player.isTired) {
+                ctx.fillStyle = 'red';
+                ctx.font = '14px Arial';
+                ctx.fillText('CANSADO!', 10, 180);
             }
 
             // Adicione esta verificação dentro do gameLoop
@@ -519,28 +690,24 @@
                 }
             }
 
-            // Desenhar indicador de dashes disponíveis
-            for (let i = 0; i < player.maxDashes; i++) {
-                ctx.fillStyle = i < player.dashesUsed ? 'red' : 'blue';
-                ctx.fillRect(10 + i * 20, 150, 15, 15);
+            if (gameState === 'playing') {
+                animationFrameId = requestAnimationFrame(gameLoop);
             }
-
-            // Desenhar indicador de cansaço
-            if (player.isTired) {
-                ctx.fillStyle = 'red';
-                ctx.font = '20px Arial';
-                ctx.fillText('CANSADO!', 10, 190);
-            }
-
-            animationFrameId = requestAnimationFrame(gameLoop);
         }
 
         function checkCollision(obj1, obj2) {
-            return obj1.x < obj2.x + obj2.width && obj1.x + obj1.width > obj2.x &&
-                   obj1.y < obj2.y + obj2.height && obj1.y + obj1.height > obj2.y;
+            if (obj1 === bullet) {
+                const dx = obj1.x - (obj2.x + obj2.width / 2);
+                const dy = obj1.y - (obj2.y + obj2.height / 2);
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                return distance < obj1.radius + Math.max(obj2.width, obj2.height) / 2;
+            } else {
+                return obj1.x < obj2.x + obj2.width && obj1.x + obj1.width > obj2.x &&
+                       obj1.y < obj2.y + obj2.height && obj1.y + obj1.height > obj2.y;
+            }
         }
 
-        function reiniciarJogo() {
+        function reiniciarJogo(initialWave = 1) {
             player.x = GAME_WIDTH / 2;
             player.y = GAME_HEIGHT - 80;
             player.lives = 3;
@@ -549,7 +716,7 @@
             bullet.isActive = false;
             player.charging = false;
             player.chargeTime = 0;
-            currentWave = 1;
+            currentWave = initialWave;
             enemiesDefeated = 0;
             boss.active = false;
             initializeWave();
@@ -558,7 +725,11 @@
         function fireBullet() {
             if (player.canShoot && !player.overheated) {
                 bullet.isActive = true;
-                bullet.x = player.x + (player.direction === 1 ? player.width : 0);
+                if (player.direction === 1) { // Jogador olhando para a direita
+                    bullet.x = player.x + player.width + bullet.radius;
+                } else { // Jogador olhando para a esquerda
+                    bullet.x = player.x - bullet.radius;
+                }
                 bullet.y = player.y + player.height / 2;
                 bullet.direction = player.direction;
                 
@@ -566,8 +737,7 @@
                 bullet.damage = bullet.baseDamage + (bullet.maxDamage - bullet.baseDamage) * chargePercentage;
                 
                 bullet.speed = 10 + 10 * chargePercentage;
-                bullet.width = 5 + 15 * chargePercentage;
-                bullet.height = 5 + 15 * chargePercentage;
+                bullet.radius = 5 + 20 * chargePercentage; // Ajuste o tamanho máximo conforme necessário
 
                 player.canShoot = false;
                 setTimeout(() => { player.canShoot = true; }, player.shootCooldown);
@@ -633,6 +803,43 @@
 
         // Inicialize o jogo no estado de menu
         showMenu();
+
+        function showVictoryScreen() {
+            cancelAnimationFrame(animationFrameId); // Para o loop do jogo
+            
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+            ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+            
+            ctx.fillStyle = 'gold';
+            ctx.font = 'bold 48px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('Parabéns! Você venceu o jogo!', GAME_WIDTH / 2, GAME_HEIGHT / 2 - 50);
+            
+            ctx.fillStyle = 'white';
+            ctx.font = '24px Arial';
+            ctx.fillText('Você derrotou o chefe final e salvou o mundo!', GAME_WIDTH / 2, GAME_HEIGHT / 2 + 20);
+            
+            ctx.fillStyle = 'lightblue';
+            ctx.fillText('Pressione ENTER para jogar novamente', GAME_WIDTH / 2, GAME_HEIGHT / 2 + 70);
+            
+            document.addEventListener('keydown', restartGameOnEnter);
+        }
+
+        function restartGameOnEnter(e) {
+            if (e.code === 'Enter' && gameState === 'victory') {
+                document.removeEventListener('keydown', restartGameOnEnter);
+                reiniciarJogo();
+                gameState = 'playing';
+                animationFrameId = requestAnimationFrame(gameLoop);
+            }
+        }
+
+        function gameOver() {
+            gameState = 'menu';
+            cancelAnimationFrame(animationFrameId);
+            showMenu();
+            alert("Game Over! Você perdeu todas as suas vidas.");
+        }
     </script>
 </body>
 </html>
