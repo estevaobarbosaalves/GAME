@@ -3,31 +3,26 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Robots Frenzy</title>
-    <script src="//cdn.jsdelivr.net/npm/phaser@3.55.2/dist/phaser.js"></script>
+    <title>Jogo de Plataforma Phaser</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/phaser/3.55.2/phaser.min.js"></script>
     <style>
-        body { margin: 0; overflow: hidden; }
-        #gameMenu { position: absolute; background: rgba(0,0,0,0.8); color: white; padding: 20px; text-align: center; width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center;}
-        #gameMenu button { display: block; width: 200px; padding: 10px; margin: 10px auto; font-size: 18px; cursor: pointer; }
-        #gameMenu div { margin-top: 20px;} /* Espaçamento para o seletor de wave */
-
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #f0f0f0;
+        }
     </style>
 </head>
 <body>
-
-    <div id="gameMenu">
-         <h1>Robots Frenzy</h1>
-        <button id="startButton">Iniciar Jogo</button>
-        <button id="instructionsButton">Instruções</button>
-        <button id="quitButton">Sair</button>
-    </div>
-
     <script>
-        let config = {
+        const config = {
             type: Phaser.AUTO,
             width: 800,
             height: 600,
-            backgroundColor: 0x000000,
             physics: {
                 default: 'arcade',
                 arcade: {
@@ -42,425 +37,110 @@
             }
         };
 
-        let game = new Phaser.Game(config);
+        const game = new Phaser.Game(config);
+
         let player;
         let platforms;
-        let ground;
         let cursors;
+        let enemies;
         let bullets;
-        let robots = [];
-        let boss;
-        let currentWave = 1;
-        let enemiesDefeated = 0;
-        let gameState = 'menu';
-        let konamiCode = ['ArrowUp', 'ArrowUp', 'ArrowDown', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ArrowLeft', 'ArrowRight', 'KeyB', 'KeyA'];
-        let konamiIndex = 0;
-        let easterEggActivated = false;
-        let gameStartedFromMenu = false;
-        let SCALE_FACTOR = 1;
-        let GAME_WIDTH = 2400;
-        let GAME_HEIGHT = 800;
+        let lastFired = 0;
+        let lastDirection = 1; // 1 para direita, -1 para esquerda
 
         function preload() {
-            this.load.image('player', 'pixil-frame-0.png');
-            // Removidas as cargas de imagens não existentes
+            this.load.image('platform', 'https://labs.phaser.io/assets/sprites/platform.png');
         }
 
         function create() {
-            // Adicione o código Konami aqui
-            this.input.keyboard.on('keydown', (event) => {
-                checkKonamiCode(event);
-            });
-            
-            // Não inicie o jogo imediatamente, aguarde o clique no botão Iniciar
-            showMenu();
+            // Plataformas
+            platforms = this.physics.add.staticGroup();
+            for (let i = 0; i < 5; i++) {
+                const x = Phaser.Math.Between(0, 800);
+                const y = i * 150;
+                platforms.create(x, y, 'platform').setScale(0.5).refreshBody().setTint(0x00FF00);
+            }
+            // Criar plataforma que preenche toda a largura
+            platforms.create(400, 550, 'platform').setScale(2).refreshBody(); // Plataforma mais baixa
 
-            // Uma vez que o botão Iniciar é clicado, este código será executado
-            initializeGame(this); // Passe a instância da cena
-        }
+            // Jogador
+            player = this.add.rectangle(400, 300, 32, 64, 0x0000FF);
+            this.physics.add.existing(player);
+            player.body.setCollideWorldBounds(true);
 
-        function initializeGame(scene) {
-            // Crie o grupo de plataformas
-            platforms = scene.physics.add.staticGroup();
-            
-            // Crie o chão como um retângulo
-            ground = scene.add.rectangle(400 * SCALE_FACTOR, 568 * SCALE_FACTOR, 800 * SCALE_FACTOR, 32 * SCALE_FACTOR, 0x00ff00);
-            platforms.add(ground);
-            scene.physics.add.existing(ground, true);
-            
-            createPlatform(scene, 600 * SCALE_FACTOR, 400 * SCALE_FACTOR);
-            createPlatform(scene, 50 * SCALE_FACTOR, 250 * SCALE_FACTOR);
-            createPlatform(scene, 750 * SCALE_FACTOR, 220 * SCALE_FACTOR);
+            // Inimigos
+            enemies = this.physics.add.group();
+            for (let i = 0; i < 3; i++) {
+                const enemy = this.add.rectangle(Phaser.Math.Between(0, 800), 0, 32, 32, 0xFF0000);
+                enemies.add(enemy);
+                enemy.body.setCollideWorldBounds(true);
+            }
 
-            // Crie o jogador
-            player = scene.physics.add.sprite(100, 450, 'player');
-            player.setBounce(0.2);
-            player.setCollideWorldBounds(true);
-            player.lives = 3;
-
-            // Crie o grupo de projéteis (bullets)
-            bullets = scene.physics.add.group({
-                defaultKey: 'bullet',
-                maxSize: 30
+            // Balas
+            bullets = this.physics.add.group({
+                allowGravity: false, // Desativar gravidade para as balas
+                immovable: true // As balas não devem ser afetadas pela gravidade
             });
 
-            // Adicione colisões entre o jogador e as plataformas
-            scene.physics.add.collider(player, platforms);
+            // Colisões
+            this.physics.add.collider(player, platforms);
+            this.physics.add.collider(enemies, platforms);
+            this.physics.add.collider(bullets, platforms, (bullet) => bullet.destroy());
+            this.physics.add.collider(player, enemies, gameOver, null, this);
+            this.physics.add.collider(bullets, enemies, hitEnemy, null, this);
 
-            // Configure os controles do teclado
-            cursors = scene.input.keyboard.createCursorKeys();
-            scene.input.keyboard.on('keydown-X', () => { shootBullet(scene) });
+            cursors = this.input.keyboard.createCursorKeys();
+            // Adicionar tecla Space para atirar
+            fireButton = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
 
-            initializeWave(scene);
-
-            // Configure a câmera para seguir o jogador
-            scene.cameras.main.startFollow(player);
-            scene.cameras.main.setBounds(0, 0, GAME_WIDTH, GAME_HEIGHT);
-
-            resizeCanvas(scene);
+            // Aumentar a gravidade
+            this.physics.world.gravity.y = 800; // Aumentando a gravidade
         }
 
-        function createPlatform(scene, x, y) {
-            const platform = scene.add.rectangle(x, y, 200 * SCALE_FACTOR, 32 * SCALE_FACTOR, 0x0000ff);
-            platforms.add(platform);
-            scene.physics.add.existing(platform, true);
-            return platform;
-        }
-
-        function createRobot(scene, isStrong = false) {
-            const x = Phaser.Math.Between(0, scene.sys.game.config.width);
-            const y = 0;
-            const robot = scene.add.rectangle(x, y, 32, 32, 0xff0000);
-            scene.physics.add.existing(robot);
-            
-            if (isStrong) {
-                robot.setScale(1.5);
-                robot.health = 50;
-            } else {
-                robot.health = 20;
-            }
-
-            robot.body.setCollideWorldBounds(true);
-            scene.physics.add.collider(robot, platforms);
-            
-            return robot;
-        }
-
-        function initializeWave(scene) {
-
-            if (currentWave === 10) {
-                boss = createBoss(scene)
-                
-            } else {
-                const numRobots = Math.min(3 + Math.floor(currentWave / 2), 10);
-                for (let i = 0; i < numRobots; i++) {
-                   const newRobot = createRobot(scene, i % 2 === 0); // Cria robôs alternados
-                    robots.push(newRobot);
-                }
-             }
-
-            }
-        
-          function createBoss(scene){
-             const boss = scene.physics.add.sprite(GAME_WIDTH / 2, ground.y-100, 'boss'); // Substitua 'boss' pelo nome da sua sprite
-              boss.health = 500;
-              boss.setScale(SCALE_FACTOR * 3); // Ajuste conforme necessário
-              boss.setCollideWorldBounds(true);
-              boss.body.setGravityY(-game.config.physics.arcade.gravity.y) // Remove a gravidade do Phaser
-              boss.setSize(boss.width * 0.8, boss.height * 0.8) // Acerta a caixa de colisão
-            return boss;
-        }
-
-
-        function hitRobot(bullet, robot) {
-            bullet.setActive(false);
-             bullet.setVisible(false);
-             robot.health -= 20; // Dano do tiro
-
-             if (robot.health <= 0) {
-                robot.destroy();
-                 enemiesDefeated++;
-                 // Se todos os robôs forem derrotados, passe para a próxima wave
-                 if (robots.filter(r => r.active).length === 0 && !boss) {
-                     currentWave++;
-                    initializeWave(game.scene.scenes[0]); // Reinicializa a wave na cena atual
-                }
-           }
-       }
-
-
-
-        function hitBoss(bullet, boss){
-            bullet.setActive(false);
-            bullet.setVisible(false);
-            boss.health -= 20; // Dano do tiro
-            if (boss.health <= 0) {
-                boss.destroy();
-                // Transição para a tela de vitória ou próxima fase, se houver
-                showVictoryScreen();
-            }
-        }
-
-
-        function hitPlayer(player, robot) {
-             // Lógica quando o jogador colide com um robô
-             player.lives--;
-             if (player.lives <= 0) {
-                 gameOver();
-             } else {
-                 // Respawn ou outra lógica
-                 player.x = GAME_WIDTH / 2 * SCALE_FACTOR;
-                player.y = GAME_HEIGHT / 2 * SCALE_FACTOR;
-            }
-
-        }
-
-        function shootBullet(scene) {
-        const bullet = bullets.get();
-        if (bullet)
-        {
-            bullet.setActive(true);
-            bullet.setVisible(true);
-
-             bullet.setScale(SCALE_FACTOR * 0.5); // Defina a escala do projétil
-            bullet.fire(player);
-        }
-        }
-
-        // Funções de tiro e atualização de projéteis
-        Phaser.GameObjects.Image.prototype.fire = function (player) {
-        this.setPosition(player.x, player.y);
-
-        if (player.flipX)
-        {
-             // Direção para a esquerda
-             this.setVelocityX(-500 * SCALE_FACTOR);
-            this.setFlipX(true);
-        }
-        else
-        {
-             // Direção para a direita
-             this.setVelocityX(500 * SCALE_FACTOR);
-            this.setFlipX(false);
-        }
-    }
-
-
-       function update() {
-
-           if (gameState === 'menu') {
-                return; // Não atualiza o jogo se estiver no menu
-            }
+        function update(time) {
             // Movimento do jogador
             if (cursors.left.isDown) {
-                player.setVelocityX(-160);
+                player.body.setVelocityX(-160);
+                lastDirection = -1; // Atualiza a última direção para esquerda
             } else if (cursors.right.isDown) {
-                player.setVelocityX(160);
+                player.body.setVelocityX(160);
+                lastDirection = 1; // Atualiza a última direção para direita
             } else {
-                player.setVelocityX(0);
+                player.body.setVelocityX(0);
             }
 
+            // Pular com a tecla Up
             if (cursors.up.isDown && player.body.touching.down) {
-                player.setVelocityY(-330);
+                player.body.setVelocityY(-330);
             }
 
-            // Movimentação dos robôs
-            robots.forEach(robot => {
-                if (robot.body) {
-                    if (player.x < robot.x) {
-                        robot.body.setVelocityX(-50);
-                    } else {
-                        robot.body.setVelocityX(50);
-                    }
+            // Atirar com a tecla Space
+            if (fireButton.isDown && time > lastFired) {
+                const bullet = this.add.rectangle(player.x, player.y, 16, 8, 0xFFFF00);
+                bullets.add(bullet);
+                bullet.body.setVelocityX(lastDirection * 400); 
+                bullet.body.setGravityY(0); // Remover gravidade do tiro
+                lastFired = time + 200;
+            }
+
+            // Movimento dos inimigos
+            enemies.children.entries.forEach(enemy => {
+                const diffX = player.x - enemy.x;
+                const diffY = player.y - enemy.y;
+                enemy.body.setVelocityX(diffX > 0 ? 50 : -50);
+                if (diffY < 0 && enemy.body.touching.down) {
+                    enemy.body.setVelocityY(-200);
                 }
             });
-
-            bullets.children.each(function (b) {
-            if (b.active)
-            {
-                if (b.x > GAME_WIDTH * SCALE_FACTOR || b.x < 0)
-                {
-                    b.setActive(false);
-                }
-            }
-        });
-
-
         }
 
-        function checkKonamiCode(event) {
-             if (event.code === konamiCode[konamiIndex]) {
-                 konamiIndex++;
-                 if (konamiIndex === konamiCode.length) {
-                     easterEggActivated = true;
-                     showMenu(); // Atualiza o menu com a opção de seleção de wave
-                     konamiIndex = 0; // Reseta o índice para permitir nova entrada do código
-                 }
-             } else {
-                konamiIndex = 0;
-             }
+        function hitEnemy(bullet, enemy) {
+            bullet.destroy();
+            enemy.destroy();
         }
-
-        function resizeCanvas(scene) {
-
-           const windowWidth = window.innerWidth;
-           const windowHeight = window.innerHeight;
-
-           SCALE_FACTOR = Math.min(windowWidth / GAME_WIDTH, windowHeight / GAME_HEIGHT);
-
-           // Redimensiona o canvas do jogo
-           scene.game.canvas.style.width = `${GAME_WIDTH * SCALE_FACTOR}px`;
-           scene.game.canvas.style.height = `${GAME_HEIGHT * SCALE_FACTOR}px`;
-
-           // Atualiza a escala da cena principal (para o caso de câmeras)
-           scene.scale.resize(GAME_WIDTH * SCALE_FACTOR, GAME_HEIGHT * SCALE_FACTOR);
-
-           // Se o jogo já tiver começado, redimensione os elementos do jogo
-           if (gameStartedFromMenu){
-                adjustGameObjects();
-            }
-
-
-
-        }
-
-
-        function adjustGameObjects() {
-            if (player) player.setScale(SCALE_FACTOR);
-
-            if (platforms) {
-                platforms.children.entries.forEach(function (platform) {
-                    platform.setSize(platform.width * SCALE_FACTOR, platform.height * SCALE_FACTOR);
-                    platform.setPosition(platform.x * SCALE_FACTOR, platform.y * SCALE_FACTOR);
-                    if (platform.body) {
-                        platform.body.setSize(platform.width, platform.height);
-                        platform.body.updateFromGameObject();
-                    }
-                });
-            }
-
-            if (bullets) {
-                bullets.children.each(function (b) {
-                    if (b.active) {
-                        b.setScale(SCALE_FACTOR * 0.5);
-                    }
-                });
-            }
-
-            if (robots) {
-                robots.forEach(robot => {
-                    if (robot.body) {
-                        robot.setScale(robot.scaleX * SCALE_FACTOR, robot.scaleY * SCALE_FACTOR);
-                        robot.body.setSize(robot.width, robot.height);
-                    }
-                });
-            }
-
-            if (boss) {
-                boss.setScale(SCALE_FACTOR * 3);
-            }
-        }
-
-         function showMenu() {
-
-             gameState = 'menu';
-             let menuHTML = `
-                 <h1>Robots Frenzy</h1>
-                 <button id="startButton">Iniciar Jogo</button>
-                 <button id="instructionsButton">Instruções</button>
-                 <button id="quitButton">Sair</button>
-             `;
-
-
-             if (easterEggActivated) {
-                 menuHTML += `
-                     <div id="waveSelector">
-                         <h3>Selecione a Wave Inicial (1-10):</h3>
-                         <input type="number" id="waveInput" min="1" max="10" value="1">
-                         <button id="selectWaveButton">Iniciar na Wave Selecionada</button>
-                     </div>
-                 `;
-             }
-
-             document.getElementById('gameMenu').innerHTML = menuHTML;
-             document.getElementById('gameMenu').style.display = 'flex';
-
-
-
-            document.getElementById('startButton').addEventListener('click', () => {
-                 startGame();
-             });
-             document.getElementById('instructionsButton').addEventListener('click', () => {
-                  showInstructions();
-            });
-            document.getElementById('quitButton').addEventListener('click', () => {
-                // Lógica para sair do jogo
-                 if (window.confirm('Tem certeza que deseja sair do jogo?')) {
-                     window.close();
-                 }
-            });
-
-
-
-            if (easterEggActivated) {
-                document.getElementById('selectWaveButton').addEventListener('click', () => {
-                    const selectedWave = parseInt(document.getElementById('waveInput').value);
-                     if (!isNaN(selectedWave) && selectedWave >= 1 && selectedWave <= 10) {
-                         currentWave = selectedWave;
-                        startGame();
-                    } else {
-                        alert('Por favor, insira um número de wave válido entre 1 e 10.');
-                    }
-                });
-            }
-         }
-
-
-        function startGame() {
-             gameStartedFromMenu = true;
-             gameState = 'playing';
-            hideMenu();
-
-            // Garanta que a cena do jogo esteja criada
-            if (!game.scene.isActive('default')) {
-                game.scene.start('default'); // 'default' é o nome da cena criada acima
-            }
-
-
-
-            // Se o jogo foi iniciado do menu, precisamos adicionar listeners após a criação da cena
-            if (gameStartedFromMenu) {
-                 window.addEventListener('resize', () => {
-                     resizeCanvas(game.scene.scenes[0]);
-                });
-            }
-            initializeWave(game.scene.scenes[0]);
-
-        }
-
-        function showInstructions() {
-            // Lógica para mostrar as instruções do jogo
-        }
-
-
-        function hideMenu() {
-            document.getElementById('gameMenu').style.display = 'none';
-        }
-
-
-
-        function showVictoryScreen() {
-        alert("Você venceu!");
-        location.reload(); // Recarrega a página para reiniciar o jogo
-       }
-
 
         function gameOver() {
-             alert("Game Over");
-            location.reload();
+            this.scene.restart();
         }
-
     </script>
-
 </body>
 </html>
