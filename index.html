@@ -127,8 +127,10 @@
                 const diffX = player.x - enemy.x;
                 const diffY = player.y - enemy.y;
                 enemy.body.setVelocityX(diffX > 0 ? 50 : -50);
+                
+                // Permitir que os inimigos pulem mais alto
                 if (diffY < 0 && enemy.body.touching.down) {
-                    enemy.body.setVelocityY(-200);
+                    enemy.body.setVelocityY(-400); // Aumentar a altura do pulo
                 }
             });
         }
