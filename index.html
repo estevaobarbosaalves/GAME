@@ -56,6 +56,7 @@
         let bullets;
         let lastFired = 0;
         let lastDirection = 1;
+        let isGameOver = false; // Adicione esta linha
 
         function preload() {
             this.load.image('platform', 'https://labs.phaser.io/assets/sprites/platform.png');
@@ -110,7 +111,7 @@
             fireButton = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
 
             // Aumentar a gravidade
-            this.physics.world.gravity.y = height * 1.5;
+            this.physics.world.gravity.y = height * 1;
 
             // Adicione este evento de redimensionamento
             window.addEventListener('resize', () => {
@@ -136,7 +137,7 @@
 
             // Pular com a tecla Up
             if (cursors.up.isDown && player.body.touching.down) {
-                player.body.setVelocityY(-height / 2);
+                player.body.setVelocityY(-height / 1.5); // Aumente o divisor para pular mais alto
             }
 
             // Atirar com a tecla Space
@@ -181,10 +182,23 @@
         }
 
         function gameOver() {
-            this.scene.restart();
+            isGameOver = true; // Marque o jogo como terminado
+            this.physics.pause(); // Pause a física do jogo
+            const gameOverText = this.add.text(this.scale.width / 2, this.scale.height / 2, 'Game Over\nPressione Enter para continuar', {
+                fontSize: '32px',
+                fill: '#FF0000',
+                align: 'center'
+            }).setOrigin(0.5); // Centralize o texto
+
+            // Adicione o evento de pressionar Enter
+            this.input.keyboard.on('keydown-ENTER', () => {
+                gameOverText.destroy(); // Remova o texto de Game Over
+                resetGame.call(this); // Reinicie o jogo
+            });
         }
 
         function resetGame() {
+            isGameOver = false; // Reinicie o estado do jogo
             this.scene.restart();
         }
     </script>
