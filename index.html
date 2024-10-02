@@ -4,958 +4,463 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Robots Frenzy</title>
+    <script src="//cdn.jsdelivr.net/npm/phaser@3.55.2/dist/phaser.js"></script>
     <style>
-        body { margin: 0; overflow: hidden; display: flex; justify-content: center; align-items: center; height: 100vh; background: black; }
-        canvas { border: 1px solid white; }
-        #gameMenu { position: absolute; background: rgba(0,0,0,0.8); color: white; padding: 20px; text-align: center; }
+        body { margin: 0; overflow: hidden; }
+        #gameMenu { position: absolute; background: rgba(0,0,0,0.8); color: white; padding: 20px; text-align: center; width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center;}
         #gameMenu button { display: block; width: 200px; padding: 10px; margin: 10px auto; font-size: 18px; cursor: pointer; }
+        #gameMenu div { margin-top: 20px;} /* Espaçamento para o seletor de wave */
+
     </style>
 </head>
 <body>
-    <canvas id="gameCanvas"></canvas>
+
     <div id="gameMenu">
-        <h1>Jogo de Plataforma 2D</h1>
+         <h1>Robots Frenzy</h1>
         <button id="startButton">Iniciar Jogo</button>
         <button id="instructionsButton">Instruções</button>
         <button id="quitButton">Sair</button>
     </div>
+
     <script>
-        const canvas = document.getElementById('gameCanvas');
-        const ctx = canvas.getContext('2d');
+        let config = {
+            type: Phaser.AUTO,
+            width: 800,
+            height: 600,
+            backgroundColor: 0x000000,
+            physics: {
+                default: 'arcade',
+                arcade: {
+                    gravity: { y: 300 },
+                    debug: false
+                }
+            },
+            scene: {
+                preload: preload,
+                create: create,
+                update: update
+            }
+        };
 
-        let GAME_WIDTH = 2400;
-        let GAME_HEIGHT = 800;
-        let SCALE_FACTOR;
-
-        // Adicione estas variáveis globais no início do seu script
+        let game = new Phaser.Game(config);
+        let player;
+        let platforms;
+        let ground;
+        let cursors;
+        let bullets;
+        let robots = [];
+        let boss;
+        let currentWave = 1;
+        let enemiesDefeated = 0;
+        let gameState = 'menu';
         let konamiCode = ['ArrowUp', 'ArrowUp', 'ArrowDown', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ArrowLeft', 'ArrowRight', 'KeyB', 'KeyA'];
         let konamiIndex = 0;
         let easterEggActivated = false;
+        let gameStartedFromMenu = false;
+        let SCALE_FACTOR = 1;
+        let GAME_WIDTH = 2400;
+        let GAME_HEIGHT = 800;
 
-        // Adicione esta função para verificar o código Konami
-        function checkKonamiCode(e) {
-            if (e.code === konamiCode[konamiIndex]) {
-                konamiIndex++;
-                if (konamiIndex === konamiCode.length) {
-                    easterEggActivated = true;
-                    showMenu(); // Atualiza o menu com a opção de seleção de wave
-                    konamiIndex = 0; // Reseta o índice para permitir nova entrada do código
-                }
-            } else {
-                konamiIndex = 0;
-            }
+        function preload() {
+            this.load.image('player', 'pixil-frame-0.png');
+            // Removidas as cargas de imagens não existentes
         }
 
-        // Adicione este event listener no início do seu script
-        document.addEventListener('keydown', checkKonamiCode);
-
-        function resizeCanvas() {
-            const windowWidth = window.innerWidth;
-            const windowHeight = window.innerHeight;
-            
-            // Calcule o fator de escala para mostrar o mapa inteiro
-            SCALE_FACTOR = Math.min(windowWidth / GAME_WIDTH, windowHeight / GAME_HEIGHT);
-            
-            // Ajuste o tamanho do canvas usando CSS
-            canvas.style.width = `${GAME_WIDTH * SCALE_FACTOR}px`;
-            canvas.style.height = `${GAME_HEIGHT * SCALE_FACTOR}px`;
-            
-            // Mantenha o tamanho lógico do canvas
-            canvas.width = GAME_WIDTH;
-            canvas.height = GAME_HEIGHT;
-            
-            // Ajuste os objetos do jogo
-            adjustGameObjects();
-        }
-
-        // Adicione esta função após a função resizeCanvas
-        function adjustGameObjects() {
-            // Aumentar o tamanho do jogador
-            const spriteRatio = 7 / 11;
-            player.height = GAME_HEIGHT * 0.15; // 15% da altura do jogo
-            player.width = player.height * spriteRatio;
-            player.speed = GAME_WIDTH * 0.004; // Aumentado para manter a jogabilidade proporcional
-            player.jumpStrength = GAME_HEIGHT * 0.025;
-            
-            // Ajustar a posição inicial do jogador para que fique no chão
-            player.y = ground.y - player.height;
-            
-            ground.y = GAME_HEIGHT - GAME_HEIGHT * 0.05;
-            ground.height = GAME_HEIGHT * 0.05;
-            
-            // Ajuste as plataformas
-            platforms.forEach(platform => {
-                platform.width = GAME_WIDTH * 0.08;
-                platform.height = GAME_HEIGHT * 0.02; // Reduzido um pouco para manter a proporção
+        function create() {
+            // Adicione o código Konami aqui
+            this.input.keyboard.on('keydown', (event) => {
+                checkKonamiCode(event);
             });
             
-            // Ajustar o tamanho e a velocidade do projétil
-            bullet.radius = GAME_WIDTH * 0.004; // 0.4% da largura do jogo
-            bullet.speed = GAME_WIDTH * 0.004; // 0.4% da largura do jogo
+            // Não inicie o jogo imediatamente, aguarde o clique no botão Iniciar
+            showMenu();
+
+            // Uma vez que o botão Iniciar é clicado, este código será executado
+            initializeGame(this); // Passe a instância da cena
+        }
+
+        function initializeGame(scene) {
+            // Crie o grupo de plataformas
+            platforms = scene.physics.add.staticGroup();
             
-            // Ajustar o tamanho dos robôs
-            robots.forEach(robot => {
-                if (robot.isStrong) {
-                    robot.width = GAME_WIDTH * 0.02; // 2% da largura do jogo
-                    robot.height = GAME_HEIGHT * 0.05; // 5% da altura do jogo
-                } else {
-                    robot.width = GAME_WIDTH * 0.015; // 1.5% da largura do jogo
-                    robot.height = GAME_HEIGHT * 0.04; // 4% da altura do jogo
-                }
+            // Crie o chão como um retângulo
+            ground = scene.add.rectangle(400 * SCALE_FACTOR, 568 * SCALE_FACTOR, 800 * SCALE_FACTOR, 32 * SCALE_FACTOR, 0x00ff00);
+            platforms.add(ground);
+            scene.physics.add.existing(ground, true);
+            
+            createPlatform(scene, 600 * SCALE_FACTOR, 400 * SCALE_FACTOR);
+            createPlatform(scene, 50 * SCALE_FACTOR, 250 * SCALE_FACTOR);
+            createPlatform(scene, 750 * SCALE_FACTOR, 220 * SCALE_FACTOR);
+
+            // Crie o jogador
+            player = scene.physics.add.sprite(100, 450, 'player');
+            player.setBounce(0.2);
+            player.setCollideWorldBounds(true);
+            player.lives = 3;
+
+            // Crie o grupo de projéteis (bullets)
+            bullets = scene.physics.add.group({
+                defaultKey: 'bullet',
+                maxSize: 30
             });
-            
-            // Ajustar o tamanho do chefe, se existir
-            if (boss) {
-                boss.width = GAME_WIDTH * 0.03; // 3% da largura do jogo
-                boss.height = GAME_HEIGHT * 0.08; // 8% da altura do jogo
-            }
-            
-            // Reduzir a força do dash
-            player.dashSpeed = GAME_WIDTH * 0.008; // Reduzido de 0.015 para 0.008 (0.8% da largura do jogo por frame)
+
+            // Adicione colisões entre o jogador e as plataformas
+            scene.physics.add.collider(player, platforms);
+
+            // Configure os controles do teclado
+            cursors = scene.input.keyboard.createCursorKeys();
+            scene.input.keyboard.on('keydown-X', () => { shootBullet(scene) });
+
+            initializeWave(scene);
+
+            // Configure a câmera para seguir o jogador
+            scene.cameras.main.startFollow(player);
+            scene.cameras.main.setBounds(0, 0, GAME_WIDTH, GAME_HEIGHT);
+
+            resizeCanvas(scene);
         }
 
-        const player = {
-            x: GAME_WIDTH / 2, y: GAME_HEIGHT - 80, width: 30, height: 50, // Aumentei a altura
-            speed: 5, jumpStrength: 20,
-            verticalVelocity: 0, lives: 3,
-            canShoot: true, shootCooldown: 500, direction: 1,
-            charging: false, chargeTime: 0, maxChargeTime: 1000,
-            isCharging: false,
-            chargedShots: 0,
-            maxChargedShots: 3,
-            overheated: false,
-            overheatCooldown: 3000,
-            canDash: true,
-            isDashing: false,
-            dashSpeed: 15,
-            dashDuration: 200,
-            dashCooldown: 1000,
-            maxDashes: 3,
-            dashesUsed: 0,
-            isTired: false,
-            tirednessRecovery: 3000,
-            sprite: new Image(),
-            spriteLoaded: false,
-            idleSprite: new Image(),
-            idleSpriteLoaded: false,
-            idleFrames: 6,
-            currentIdleFrame: 0,
-            idleAnimationTimer: 0,
-            isIdle: true
-        };
-
-        player.sprite.onload = function() {
-            player.spriteLoaded = true;
-            console.log("Sprite do jogador carregado com sucesso");
-            console.log("Dimensões do sprite:", player.sprite.width, player.sprite.height);
-        };
-        player.sprite.onerror = function() {
-            console.error("Erro ao carregar o sprite do jogador");
-        };
-        player.sprite.src = 'pixil-frame-0.png'; // Caminho para o novo sprite
-
-        player.idleSprite.onload = function() {
-            player.idleSpriteLoaded = true;
-            console.log("Sprite de idle do jogador carregado com sucesso");
-        };
-        player.idleSprite.onerror = function() {
-            console.error("Erro ao carregar o sprite de idle do jogador");
-        };
-        player.idleSprite.src = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAcAAAALCAYAAACzkJeoAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAnSURBVHgBzc4xDQAACAMwwL/TQQNvagSKFAYeVbcd5LRNyWmfkuMBXAMEAYVLHygAAAAASUVORK5CYII=';
-
-        const bullet = { x: 0, y: 0, radius: 5, speed: 10, isActive: false, direction: 1, damage: 20, baseDamage: 10, maxDamage: 50 };
-
-        let currentWave = 1;
-        let enemiesDefeated = 0;
-        const robots = [];
-        const platforms = [
-            {x: 400, y: 650, width: 200, height: 20},
-            {x: 800, y: 550, width: 200, height: 20},
-            {x: 1200, y: 450, width: 200, height: 20},
-            {x: 1600, y: 350, width: 200, height: 20},
-            {x: 2000, y: 250, width: 200, height: 20},
-            {x: 600, y: 150, width: 200, height: 20},
-            {x: 1000, y: 100, width: 200, height: 20},
-            {x: 1400, y: 200, width: 200, height: 20},
-            {x: 1800, y: 300, width: 200, height: 20}
-        ];
-
-        const ground = { y: GAME_HEIGHT - 30, height: 30 };
-
-        const keys = {};
-        document.addEventListener('keydown', (e) => keys[e.code] = true);
-        document.addEventListener('keyup', (e) => keys[e.code] = false);
-
-        // Adicione esta nova constante para o chefe
-        const boss = {
-            x: GAME_WIDTH / 2,
-            y: ground.y - 100,
-            width: 80,
-            height: 100,
-            speed: 3,
-            jumpStrength: 25,
-            health: 500,
-            maxHealth: 500,
-            verticalVelocity: 0,
-            direction: 1,
-            color: 'purple',
-            active: false,
-            barWidth: 200, // Largura da barra de vida
-            barHeight: 20, // Altura da barra de vida
-        };
-
-        // Modifique a função createRobot para incluir uma propriedade de animação
-        function createRobot(isStrong) {
-            const baseHealth = isStrong ? 50 : 20;
-            const health = baseHealth + (isStrong ? (currentWave - 1) * 10 : 0);
-            return {
-                x: Math.random() < 0.5 ? -30 : GAME_WIDTH,
-                y: ground.y - (isStrong ? 60 : 40),
-                width: isStrong ? 40 : 30, height: isStrong ? 60 : 40,
-                speed: isStrong ? 2 : 1, jumpStrength: isStrong ? 20 : 18,
-                health: health, maxHealth: health, isStrong: isStrong,
-                color: isStrong ? 'red' : 'orange',
-                verticalVelocity: 0, direction: 1,
-                animationFrame: 0,
-                animationTimer: 0,
-                spriteWidth: 32, // Width of each sprite frame
-                spriteHeight: 32, // Height of each sprite frame
-                spriteFrames: 4, // Number of frames in the walking animation
-            };
+        function createPlatform(scene, x, y) {
+            const platform = scene.add.rectangle(x, y, 200 * SCALE_FACTOR, 32 * SCALE_FACTOR, 0x0000ff);
+            platforms.add(platform);
+            scene.physics.add.existing(platform, true);
+            return platform;
         }
 
-        function moveObject(obj) {
-            obj.prevX = obj.x;
-            if (obj === player) {
-                if (player.isDashing) {
-                    obj.x += obj.dashSpeed * obj.direction;
-                } else {
-                    if (keys['ArrowLeft']) { obj.x -= obj.speed; obj.direction = -1; }
-                    if (keys['ArrowRight']) { obj.x += obj.speed; obj.direction = 1; }
-                    if (keys['Space'] && isOnGround(obj)) { obj.verticalVelocity = -obj.jumpStrength; }
-                }
-            } else if (obj === boss) {
-                // Lógica de movimento do chefe
-                if (Math.abs(player.x - boss.x) > 100) { // Mova em direção ao jogador se estiver longe
-                    boss.x += boss.speed * (player.x > boss.x ? 1 : -1);
-                }
-                boss.direction = player.x > boss.x ? 1 : -1; // Atualize a dire��ão do chefe
-
-                // Lógica de salto do chefe
-                if (isOnGround(boss) && Math.random() < 0.02) { // 2% de chance de pular quando no chão
-                    boss.verticalVelocity = -boss.jumpStrength;
-                }
+        function createRobot(scene, isStrong = false) {
+            const x = Phaser.Math.Between(0, scene.sys.game.config.width);
+            const y = 0;
+            const robot = scene.add.rectangle(x, y, 32, 32, 0xff0000);
+            scene.physics.add.existing(robot);
+            
+            if (isStrong) {
+                robot.setScale(1.5);
+                robot.health = 50;
             } else {
-                obj.x += obj.speed * (obj.x < player.x ? 1 : -1);
-                if (isOnGround(obj) && Math.random() < 0.01) { obj.verticalVelocity = -obj.jumpStrength; }
+                robot.health = 20;
             }
-            obj.x = Math.max(0, Math.min(GAME_WIDTH - obj.width, obj.x));
-            obj.verticalVelocity += 0.6;
-            obj.y += obj.verticalVelocity;
-            for (let platform of platforms) {
-                if (obj.x < platform.x + platform.width && obj.x + obj.width > platform.x &&
-                    obj.y + obj.height >= platform.y && obj.y + obj.height <= platform.y + platform.height / 2) {
-                    obj.y = platform.y - obj.height;
-                    obj.verticalVelocity = 0;
-                    break;
-                }
-            }
-            if (obj.y + obj.height > ground.y) {
-                obj.y = ground.y - obj.height;
-                obj.verticalVelocity = 0;
-            }
+
+            robot.body.setCollideWorldBounds(true);
+            scene.physics.add.collider(robot, platforms);
+            
+            return robot;
         }
 
-        function isOnGround(obj) {
-            return obj.y + obj.height >= ground.y || platforms.some(platform => 
-                obj.y + obj.height === platform.y &&
-                obj.x < platform.x + platform.width &&
-                obj.x + obj.width > platform.x
-            );
-        }
+        function initializeWave(scene) {
 
-        function shootBullet() {
-            if (player.canShoot) {
-                bullet.x = player.x + (player.direction === 1 ? player.width : 0);
-                bullet.y = player.y + player.height / 2;
-                bullet.isActive = true;
-                bullet.direction = player.direction;
-                let chargeFactor = Math.min(player.chargeTime / player.maxChargeTime, 1);
-                bullet.damage = 20 + Math.floor(chargeFactor * 60);
-                player.canShoot = false;
-                setTimeout(() => { player.canShoot = true; }, player.shootCooldown);
-                player.charging = false;
-                player.chargeTime = 0;
-            }
-        }
-
-        function updateBullet() {
-            if (bullet.isActive) {
-                bullet.x += bullet.speed * bullet.direction;
-                if (bullet.x - bullet.radius < 0 || bullet.x + bullet.radius > GAME_WIDTH) bullet.isActive = false;
-            }
-        }
-
-        function initializeWave() {
-            robots.length = 0;
             if (currentWave === 10) {
-                boss.active = true;
-                boss.health = boss.maxHealth;
+                boss = createBoss(scene)
                 
-                // Lógica para spawnar o chefe longe do jogador
-                const minDistance = GAME_WIDTH / 3; // Distância mínima do jogador
-                let bossX;
-                
-                if (player.x < GAME_WIDTH / 2) {
-                    // Se o jogador estiver na metade esquerda, spawna o chefe na direita
-                    bossX = Math.random() * (GAME_WIDTH / 2) + GAME_WIDTH / 2;
-                } else {
-                    // Se o jogador estiver na metade direita, spawna o chefe na esquerda
-                    bossX = Math.random() * (GAME_WIDTH / 2);
-                }
-                
-                // Garante que o chefe não spawne muito perto das bordas
-                bossX = Math.max(boss.width, Math.min(bossX, GAME_WIDTH - boss.width));
-                
-                boss.x = bossX;
-                boss.y = ground.y - boss.height; // Coloca o chefe no chão
             } else {
-                const enemiesPerWave = Math.min(3 + Math.floor(currentWave / 2), 10);
-                const strongRobots = Math.min(Math.floor(currentWave / 3), 5);
-                for (let i = 0; i < enemiesPerWave; i++) {
-                    robots.push(createRobot(i < strongRobots));
+                const numRobots = Math.min(3 + Math.floor(currentWave / 2), 10);
+                for (let i = 0; i < numRobots; i++) {
+                   const newRobot = createRobot(scene, i % 2 === 0); // Cria robôs alternados
+                    robots.push(newRobot);
+                }
+             }
+
+            }
+        
+          function createBoss(scene){
+             const boss = scene.physics.add.sprite(GAME_WIDTH / 2, ground.y-100, 'boss'); // Substitua 'boss' pelo nome da sua sprite
+              boss.health = 500;
+              boss.setScale(SCALE_FACTOR * 3); // Ajuste conforme necessário
+              boss.setCollideWorldBounds(true);
+              boss.body.setGravityY(-game.config.physics.arcade.gravity.y) // Remove a gravidade do Phaser
+              boss.setSize(boss.width * 0.8, boss.height * 0.8) // Acerta a caixa de colisão
+            return boss;
+        }
+
+
+        function hitRobot(bullet, robot) {
+            bullet.setActive(false);
+             bullet.setVisible(false);
+             robot.health -= 20; // Dano do tiro
+
+             if (robot.health <= 0) {
+                robot.destroy();
+                 enemiesDefeated++;
+                 // Se todos os robôs forem derrotados, passe para a próxima wave
+                 if (robots.filter(r => r.active).length === 0 && !boss) {
+                     currentWave++;
+                    initializeWave(game.scene.scenes[0]); // Reinicializa a wave na cena atual
+                }
+           }
+       }
+
+
+
+        function hitBoss(bullet, boss){
+            bullet.setActive(false);
+            bullet.setVisible(false);
+            boss.health -= 20; // Dano do tiro
+            if (boss.health <= 0) {
+                boss.destroy();
+                // Transição para a tela de vitória ou próxima fase, se houver
+                showVictoryScreen();
+            }
+        }
+
+
+        function hitPlayer(player, robot) {
+             // Lógica quando o jogador colide com um robô
+             player.lives--;
+             if (player.lives <= 0) {
+                 gameOver();
+             } else {
+                 // Respawn ou outra lógica
+                 player.x = GAME_WIDTH / 2 * SCALE_FACTOR;
+                player.y = GAME_HEIGHT / 2 * SCALE_FACTOR;
+            }
+
+        }
+
+        function shootBullet(scene) {
+        const bullet = bullets.get();
+        if (bullet)
+        {
+            bullet.setActive(true);
+            bullet.setVisible(true);
+
+             bullet.setScale(SCALE_FACTOR * 0.5); // Defina a escala do projétil
+            bullet.fire(player);
+        }
+        }
+
+        // Funções de tiro e atualização de projéteis
+        Phaser.GameObjects.Image.prototype.fire = function (player) {
+        this.setPosition(player.x, player.y);
+
+        if (player.flipX)
+        {
+             // Direção para a esquerda
+             this.setVelocityX(-500 * SCALE_FACTOR);
+            this.setFlipX(true);
+        }
+        else
+        {
+             // Direção para a direita
+             this.setVelocityX(500 * SCALE_FACTOR);
+            this.setFlipX(false);
+        }
+    }
+
+
+       function update() {
+
+           if (gameState === 'menu') {
+                return; // Não atualiza o jogo se estiver no menu
+            }
+            // Movimento do jogador
+            if (cursors.left.isDown) {
+                player.setVelocityX(-160);
+            } else if (cursors.right.isDown) {
+                player.setVelocityX(160);
+            } else {
+                player.setVelocityX(0);
+            }
+
+            if (cursors.up.isDown && player.body.touching.down) {
+                player.setVelocityY(-330);
+            }
+
+            // Movimentação dos robôs
+            robots.forEach(robot => {
+                if (robot.body) {
+                    if (player.x < robot.x) {
+                        robot.body.setVelocityX(-50);
+                    } else {
+                        robot.body.setVelocityX(50);
+                    }
+                }
+            });
+
+            bullets.children.each(function (b) {
+            if (b.active)
+            {
+                if (b.x > GAME_WIDTH * SCALE_FACTOR || b.x < 0)
+                {
+                    b.setActive(false);
                 }
             }
+        });
+
+
         }
 
-        let lastTime = 0;
-        let gameState = 'menu';
-        let animationFrameId;
+        function checkKonamiCode(event) {
+             if (event.code === konamiCode[konamiIndex]) {
+                 konamiIndex++;
+                 if (konamiIndex === konamiCode.length) {
+                     easterEggActivated = true;
+                     showMenu(); // Atualiza o menu com a opção de seleção de wave
+                     konamiIndex = 0; // Reseta o índice para permitir nova entrada do código
+                 }
+             } else {
+                konamiIndex = 0;
+             }
+        }
 
-        function showMenu() {
-            gameState = 'menu';
-            let menuHTML = `
-                <h1>Robots Frenzy</h1>
-                <button id="startButton">Iniciar Jogo</button>
-                <button id="instructionsButton">Instruções</button>
-                <button id="quitButton">Sair</button>
-            `;
-            
-            if (easterEggActivated) {
-                menuHTML += `
-                    <div id="waveSelector" style="margin-top: 20px;">
-                        <h3>Selecione a Wave Inicial (1-10):</h3>
-                        <input type="number" id="waveInput" min="1" max="10" value="1">
-                        <button id="selectWaveButton">Iniciar na Wave Selecionada</button>
-                    </div>
-                `;
+        function resizeCanvas(scene) {
+
+           const windowWidth = window.innerWidth;
+           const windowHeight = window.innerHeight;
+
+           SCALE_FACTOR = Math.min(windowWidth / GAME_WIDTH, windowHeight / GAME_HEIGHT);
+
+           // Redimensiona o canvas do jogo
+           scene.game.canvas.style.width = `${GAME_WIDTH * SCALE_FACTOR}px`;
+           scene.game.canvas.style.height = `${GAME_HEIGHT * SCALE_FACTOR}px`;
+
+           // Atualiza a escala da cena principal (para o caso de câmeras)
+           scene.scale.resize(GAME_WIDTH * SCALE_FACTOR, GAME_HEIGHT * SCALE_FACTOR);
+
+           // Se o jogo já tiver começado, redimensione os elementos do jogo
+           if (gameStartedFromMenu){
+                adjustGameObjects();
             }
-            
-            document.getElementById('gameMenu').innerHTML = menuHTML;
-            document.getElementById('gameMenu').style.display = 'block';
-            addMenuListeners();
+
+
+
         }
+
+
+        function adjustGameObjects() {
+            if (player) player.setScale(SCALE_FACTOR);
+
+            if (platforms) {
+                platforms.children.entries.forEach(function (platform) {
+                    platform.setSize(platform.width * SCALE_FACTOR, platform.height * SCALE_FACTOR);
+                    platform.setPosition(platform.x * SCALE_FACTOR, platform.y * SCALE_FACTOR);
+                    if (platform.body) {
+                        platform.body.setSize(platform.width, platform.height);
+                        platform.body.updateFromGameObject();
+                    }
+                });
+            }
+
+            if (bullets) {
+                bullets.children.each(function (b) {
+                    if (b.active) {
+                        b.setScale(SCALE_FACTOR * 0.5);
+                    }
+                });
+            }
+
+            if (robots) {
+                robots.forEach(robot => {
+                    if (robot.body) {
+                        robot.setScale(robot.scaleX * SCALE_FACTOR, robot.scaleY * SCALE_FACTOR);
+                        robot.body.setSize(robot.width, robot.height);
+                    }
+                });
+            }
+
+            if (boss) {
+                boss.setScale(SCALE_FACTOR * 3);
+            }
+        }
+
+         function showMenu() {
+
+             gameState = 'menu';
+             let menuHTML = `
+                 <h1>Robots Frenzy</h1>
+                 <button id="startButton">Iniciar Jogo</button>
+                 <button id="instructionsButton">Instruções</button>
+                 <button id="quitButton">Sair</button>
+             `;
+
+
+             if (easterEggActivated) {
+                 menuHTML += `
+                     <div id="waveSelector">
+                         <h3>Selecione a Wave Inicial (1-10):</h3>
+                         <input type="number" id="waveInput" min="1" max="10" value="1">
+                         <button id="selectWaveButton">Iniciar na Wave Selecionada</button>
+                     </div>
+                 `;
+             }
+
+             document.getElementById('gameMenu').innerHTML = menuHTML;
+             document.getElementById('gameMenu').style.display = 'flex';
+
+
+
+            document.getElementById('startButton').addEventListener('click', () => {
+                 startGame();
+             });
+             document.getElementById('instructionsButton').addEventListener('click', () => {
+                  showInstructions();
+            });
+            document.getElementById('quitButton').addEventListener('click', () => {
+                // Lógica para sair do jogo
+                 if (window.confirm('Tem certeza que deseja sair do jogo?')) {
+                     window.close();
+                 }
+            });
+
+
+
+            if (easterEggActivated) {
+                document.getElementById('selectWaveButton').addEventListener('click', () => {
+                    const selectedWave = parseInt(document.getElementById('waveInput').value);
+                     if (!isNaN(selectedWave) && selectedWave >= 1 && selectedWave <= 10) {
+                         currentWave = selectedWave;
+                        startGame();
+                    } else {
+                        alert('Por favor, insira um número de wave válido entre 1 e 10.');
+                    }
+                });
+            }
+         }
+
+
+        function startGame() {
+             gameStartedFromMenu = true;
+             gameState = 'playing';
+            hideMenu();
+
+            // Garanta que a cena do jogo esteja criada
+            if (!game.scene.isActive('default')) {
+                game.scene.start('default'); // 'default' é o nome da cena criada acima
+            }
+
+
+
+            // Se o jogo foi iniciado do menu, precisamos adicionar listeners após a criação da cena
+            if (gameStartedFromMenu) {
+                 window.addEventListener('resize', () => {
+                     resizeCanvas(game.scene.scenes[0]);
+                });
+            }
+            initializeWave(game.scene.scenes[0]);
+
+        }
+
+        function showInstructions() {
+            // Lógica para mostrar as instruções do jogo
+        }
+
 
         function hideMenu() {
             document.getElementById('gameMenu').style.display = 'none';
         }
 
-        function startGame() {
-            gameState = 'playing';
-            hideMenu();
-            resizeCanvas();
-            reiniciarJogo(currentWave); // Modifique esta função para aceitar a wave inicial
-            lastTime = performance.now();
-            gameLoop(lastTime);
-        }
 
-        function showInstructions() {
-            document.getElementById('gameMenu').innerHTML = `
-                <h1>Instruções</h1>
-                <p>Use as setas para mover o jogador:</p>
-                <ul>
-                    <li>← (Seta Esquerda): Mover para a esquerda</li>
-                    <li>→ (Seta Direita): Mover para a direita</li>
-                    <li>Espaço: Pular</li>
-                </ul>
-                <p>Controles de tiro:</p>
-                <ul>
-                    <li>X: Pressione e segure para carregar o tiro, solte para atirar</li>
-                    <li>Cuidado com o superaquecimento após 3 tiros carregados!</li>
-                </ul>
-                <p>Dash:</p>
-                <ul>
-                    <li>Q: Realizar um dash rápido na direção do movimento</li>
-                    <li>Você pode usar o dash ${player.maxDashes} vezes antes de ficar cansado</li>
-                    <li>Após ficar cansado, espere um momento para recuperar o fôlego</li>
-                </ul>
-                <p>Objetivo: Derrote os robôs inimigos e sobreviva às ondas de ataques!</p>
-                <button id="backButton">Voltar ao Menu</button>
-            `;
-            document.getElementById('backButton').addEventListener('click', showMenu);
-        }
-
-        function addMenuListeners() {
-            const startButton = document.getElementById('startButton');
-            const instructionsButton = document.getElementById('instructionsButton');
-            const quitButton = document.getElementById('quitButton');
-            const backButton = document.getElementById('backButton');
-
-            if (startButton) startButton.addEventListener('click', startGame);
-            if (instructionsButton) instructionsButton.addEventListener('click', showInstructions);
-            if (quitButton) quitButton.addEventListener('click', () => {
-                if (window.confirm('Tem certeza que deseja sair do jogo?')) {
-                    window.close();
-                }
-            });
-            if (backButton) backButton.addEventListener('click', showMenu);
-
-            if (easterEggActivated) {
-                const selectWaveButton = document.getElementById('selectWaveButton');
-                if (selectWaveButton) {
-                    selectWaveButton.addEventListener('click', () => {
-                        const selectedWave = parseInt(document.getElementById('waveInput').value);
-                        if (selectedWave >= 1 && selectedWave <= 10) {
-                            currentWave = selectedWave;
-                            startGame();
-                        } else {
-                            alert('Por favor, selecione uma wave entre 1 e 10.');
-                        }
-                    });
-                }
-            }
-        }
-
-        // Adicione um evento para pausar o jogo
-        document.addEventListener('keydown', (e) => {
-            if (e.code === 'Escape' && gameState === 'playing') {
-                gameState = 'menu';
-                showMenu();
-            }
-        });
-
-        // Adicione um listener de redimensionamento e chame resizeCanvas no início
-        window.addEventListener('resize', resizeCanvas);
-        resizeCanvas();
-
-        // Inicialize o jogo no estado de menu
-        showMenu();
 
         function showVictoryScreen() {
-            cancelAnimationFrame(animationFrameId); // Para o loop do jogo
-            
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
-            ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
-            
-            ctx.fillStyle = 'gold';
-            ctx.font = 'bold 48px Arial';
-            ctx.textAlign = 'center';
-            ctx.fillText('Parabéns! Você venceu o jogo!', GAME_WIDTH / 2, GAME_HEIGHT / 2 - 50);
-            
-            ctx.fillStyle = 'white';
-            ctx.font = '24px Arial';
-            ctx.fillText('Você derrotou o chefe final e salvou o mundo!', GAME_WIDTH / 2, GAME_HEIGHT / 2 + 20);
-            
-            ctx.fillStyle = 'lightblue';
-            ctx.fillText('Pressione ENTER para jogar novamente', GAME_WIDTH / 2, GAME_HEIGHT / 2 + 70);
-            
-            document.addEventListener('keydown', restartGameOnEnter);
-        }
+        alert("Você venceu!");
+        location.reload(); // Recarrega a página para reiniciar o jogo
+       }
 
-        function restartGameOnEnter(e) {
-            if (e.code === 'Enter' && gameState === 'victory') {
-                document.removeEventListener('keydown', restartGameOnEnter);
-                reiniciarJogo();
-                gameState = 'playing';
-                animationFrameId = requestAnimationFrame(gameLoop);
-            }
-        }
 
         function gameOver() {
-            gameState = 'menu';
-            cancelAnimationFrame(animationFrameId);
-            showMenu();
-            alert("Game Over! Você perdeu todas as suas vidas.");
+             alert("Game Over");
+            location.reload();
         }
-
-        // Adicione este código no início do seu script para garantir que o canvas seja configurado corretamente
-        window.onload = function() {
-            canvas.width = GAME_WIDTH;
-            canvas.height = GAME_HEIGHT;
-            console.log("Canvas configurado com dimensões:", canvas.width, canvas.height);
-            gameLoop();
-        };
-
-        const robotSpriteSheet = new Image();
-        robotSpriteSheet.src = 'robot-spritessheet.png';
-
-        function drawRobotSprite(ctx, robot) {
-            const scale = Math.min(robot.width / robot.spriteWidth, robot.height / robot.spriteHeight);
-            
-            ctx.save();
-            ctx.translate(robot.x, robot.y);
-            if (robot.direction === -1) {
-                ctx.scale(-1, 1);
-                ctx.translate(-robot.width, 0);
-            }
-            
-            const isMoving = robot.x !== robot.prevX;
-            const spriteY = isMoving ? 0 : robot.spriteHeight; // Use top row for walking, bottom row for idle
-            
-            ctx.drawImage(
-                robotSpriteSheet,
-                robot.animationFrame * robot.spriteWidth, spriteY,
-                robot.spriteWidth, robot.spriteHeight,
-                0, 0,
-                robot.width, robot.height
-            );
-            
-            ctx.restore();
-        }
-
-        // No gameLoop, adicione a lógica de animação
-        function gameLoop(currentTime) {
-            if (gameState !== 'playing') {
-                cancelAnimationFrame(animationFrameId);
-                return;
-            }
-
-            const deltaTime = currentTime - lastTime;
-            lastTime = currentTime;
-
-            // Limpe o canvas antes de desenhar
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-            // Desenhe um fundo para garantir que o canvas está visível
-            ctx.fillStyle = 'black';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-            console.log("Posição do jogador:", player.x, player.y);
-            console.log("Sprite carregado:", player.spriteLoaded);
-            console.log("Dimensões do canvas:", canvas.width, canvas.height);
-
-            // Calcular a posição da câmera
-            const cameraX = Math.max(0, Math.min(player.x - canvas.width / 2, GAME_WIDTH - canvas.width));
-
-            ctx.save();
-            ctx.translate(-cameraX, 0);
-
-            // Desenhar o fundo
-            ctx.fillStyle = 'skyblue';
-            ctx.fillRect(cameraX, 0, canvas.width, GAME_HEIGHT);
-
-            ctx.fillStyle = 'gray';
-            for (let platform of platforms) {
-                if (platform.x + platform.width > cameraX && platform.x < cameraX + canvas.width) {
-                    ctx.fillRect(platform.x, platform.y, platform.width, platform.height);
-                }
-            }
-
-            ctx.fillStyle = 'gray';
-            ctx.fillRect(cameraX, ground.y, canvas.width, ground.height);
-
-            moveObject(player);
-            drawPlayerSprite(ctx, player);
-
-            // Desenhar a bola de energia se estiver carregando
-            if (player.isCharging) {
-                const chargePercentage = player.chargeTime / player.maxChargeTime;
-                drawChargeBall(ctx, player, chargePercentage);
-            }
-
-            updateBullet();
-            if (bullet.isActive) {
-                ctx.beginPath();
-                ctx.arc(bullet.x, bullet.y, bullet.radius, 0, Math.PI * 2);
-                ctx.fillStyle = 'yellow';
-                ctx.fill();
-                ctx.strokeStyle = 'orange';
-                ctx.lineWidth = 2;
-                ctx.stroke();
-            }
-
-            if (boss.active) {
-                moveObject(boss);
-                ctx.fillStyle = boss.color;
-                ctx.fillRect(boss.x, boss.y, boss.width, boss.height);
-
-                // Desenhar a barra de vida do chefe
-                const barX = boss.x + (boss.width - boss.barWidth) / 2;
-                const barY = boss.y - 40;
-
-                // Fundo da barra de vida
-                ctx.fillStyle = 'gray';
-                ctx.fillRect(barX, barY, boss.barWidth, boss.barHeight);
-
-                // Barra de vida atual
-                ctx.fillStyle = 'red';
-                const currentHealthWidth = (boss.health / boss.maxHealth) * boss.barWidth;
-                ctx.fillRect(barX, barY, currentHealthWidth, boss.barHeight);
-
-                // Contorno da barra de vida
-                ctx.strokeStyle = 'black';
-                ctx.lineWidth = 2;
-                ctx.strokeRect(barX, barY, boss.barWidth, boss.barHeight);
-
-                // Texto "Boss"
-                ctx.fillStyle = 'white';
-                ctx.font = 'bold 16px Arial';
-                ctx.textAlign = 'center';
-                ctx.fillText('Boss', boss.x + boss.width / 2, barY + boss.barHeight + 20);
-
-                // Resetar alinhamento do texto
-                ctx.textAlign = 'left';
-
-                if (checkCollision(player, boss)) {
-                    player.lives--;
-                    if (player.lives <= 0) {
-                        gameOver();
-                        return;
-                    } else {
-                        player.x = GAME_WIDTH / 2;
-                        player.y = GAME_HEIGHT - 80;
-                    }
-                }
-
-                if (bullet.isActive && checkCollision(bullet, boss)) {
-                    bullet.isActive = false;
-                    boss.health -= bullet.damage;
-                    if (boss.health <= 0) {
-                        boss.active = false;
-                        if (currentWave === 10) {
-                            gameState = 'victory'; // Muda o estado do jogo para vitória
-                            showVictoryScreen(); // Chama a tela de vitória
-                        } else {
-                            currentWave++;
-                            initializeWave();
-                        }
-                    }
-                }
-            }
-
-            robots.forEach((robot, index) => {
-                moveObject(robot);
-                
-                // Update animation
-                robot.animationTimer += deltaTime;
-                if (robot.animationTimer > 200) { // Change frame every 200ms
-                    robot.animationFrame = (robot.animationFrame + 1) % robot.spriteFrames;
-                    robot.animationTimer = 0;
-                }
-                
-                drawRobotSprite(ctx, robot);
-
-                if (checkCollision(player, robot)) {
-                    player.lives--;
-                    if (player.lives <= 0) {
-                        gameOver();
-                        return;
-                    } else {
-                        player.x = GAME_WIDTH / 2;
-                        player.y = GAME_HEIGHT - 80;
-                        robots[index] = createRobot(robot.isStrong);
-                    }
-                }
-
-                if (bullet.isActive && checkCollision(bullet, robot)) {
-                    bullet.isActive = false;
-                    robot.health -= bullet.damage;
-                    if (robot.health <= 0) {
-                        robots.splice(index, 1);
-                        enemiesDefeated++;
-                        if (robots.length === 0) {
-                            currentWave++;
-                            initializeWave();
-                        }
-                    }
-                }
-
-                ctx.fillStyle = 'green';
-                let healthWidth = (robot.health / robot.maxHealth) * robot.width;
-                ctx.fillRect(robot.x, robot.y - 10, healthWidth, 5);
-            });
-
-            ctx.restore();
-
-            ctx.fillStyle = 'white';
-            ctx.font = '20px Arial';
-            ctx.fillText(`Vidas: ${player.lives}`, 10, 30);
-            ctx.fillText(`Onda: ${currentWave}`, 10, 60);
-            if (boss.active) {
-                ctx.fillText(`Chefe HP: ${boss.health}/${boss.maxHealth}`, 10, 90);
-            } else {
-                ctx.fillText(`Inimigos: ${robots.length}`, 10, 90);
-            }
-
-            // Removido o indicador de cooldown de tiro
-
-            if (keys.KeyX) {
-                if (!player.isCharging && !player.overheated) {
-                    player.isCharging = true;
-                    player.chargeTime = 0;
-                } else if (player.isCharging) {
-                    player.chargeTime = Math.min(player.chargeTime + deltaTime, player.maxChargeTime);
-                }
-            } else if (player.isCharging) {
-                fireBullet();
-            }
-
-            // Desenhar indicador de tiros carregados
-            for (let i = 0; i < player.maxChargedShots; i++) {
-                ctx.fillStyle = i < player.chargedShots ? 'orange' : 'gray';
-                ctx.fillRect(10 + i * 20, 120, 15, 15);
-            }
-
-            // Ajustar o tamanho e a posição do texto de sobrecarga
-            if (player.overheated) {
-                ctx.fillStyle = 'red';
-                ctx.font = '14px Arial';
-                ctx.fillText('SOBRECARREGADO!', 10, 110);
-            }
-
-            // Desenhar indicador de dashes disponíveis
-            for (let i = 0; i < player.maxDashes; i++) {
-                ctx.fillStyle = i < player.dashesUsed ? 'red' : 'blue';
-                ctx.fillRect(10 + i * 20, 150, 15, 15);
-            }
-
-            // Desenhar indicador de cansaço
-            if (player.isTired) {
-                ctx.fillStyle = 'red';
-                ctx.font = '14px Arial';
-                ctx.fillText('CANSADO!', 10, 180);
-            }
-
-            // Atualizar a animação de idle
-            player.idleAnimationTimer += deltaTime;
-            if (player.idleAnimationTimer > 200) { // Muda a cada 200ms
-                player.currentIdleFrame = (player.currentIdleFrame + 1) % player.idleFrames;
-                player.idleAnimationTimer = 0;
-            }
-
-            // Verificar se o jogador está se movendo ou não
-            player.isIdle = !keys['ArrowLeft'] && !keys['ArrowRight'] && !keys['Space'] && !player.isDashing;
-
-            // Adicione esta verificação dentro do gameLoop
-            if (player.isDashing) {
-                player.dashDuration -= deltaTime;
-                if (player.dashDuration <= 0) {
-                    player.isDashing = false;
-                    player.dashDuration = 200; // Resetar a duração do dash
-                    player.dashesUsed++;
-                    if (player.dashesUsed >= player.maxDashes) {
-                        player.isTired = true;
-                        player.dashesUsed = 0;
-                        setTimeout(() => {
-                            player.isTired = false;
-                        }, player.tirednessRecovery);
-                    }
-                    player.canDash = false;
-                    setTimeout(() => { player.canDash = true; }, player.dashCooldown);
-                }
-            }
-
-            if (gameState === 'playing') {
-                animationFrameId = requestAnimationFrame(gameLoop);
-            }
-        }
-
-        function checkCollision(obj1, obj2) {
-            if (obj1 === bullet) {
-                const dx = obj1.x - (obj2.x + obj2.width / 2);
-                const dy = obj1.y - (obj2.y + obj2.height / 2);
-                const distance = Math.sqrt(dx * dx + dy * dy);
-                return distance < obj1.radius + Math.max(obj2.width, obj2.height) / 2;
-            } else {
-                return obj1.x < obj2.x + obj2.width && obj1.x + obj1.width > obj2.x &&
-                       obj1.y < obj2.y + obj2.height && obj1.y + obj1.height > obj2.y;
-            }
-        }
-
-        function reiniciarJogo(initialWave = 1) {
-            player.x = GAME_WIDTH / 2;
-            player.y = GAME_HEIGHT - 80;
-            player.lives = 3;
-            player.canShoot = true;
-            player.direction = 1;
-            bullet.isActive = false;
-            player.charging = false;
-            player.chargeTime = 0;
-            currentWave = initialWave;
-            enemiesDefeated = 0;
-            boss.active = false;
-            initializeWave();
-        }
-
-        function fireBullet() {
-            if (player.canShoot && !player.overheated) {
-                bullet.isActive = true;
-                if (player.direction === 1) { // Jogador olhando para a direita
-                    bullet.x = player.x + player.width + bullet.radius;
-                } else { // Jogador olhando para a esquerda
-                    bullet.x = player.x - bullet.radius;
-                }
-                bullet.y = player.y + player.height / 2;
-                bullet.direction = player.direction;
-                
-                const chargePercentage = player.chargeTime / player.maxChargeTime;
-                bullet.damage = bullet.baseDamage + (bullet.maxDamage - bullet.baseDamage) * chargePercentage;
-                
-                bullet.speed = 10 + 10 * chargePercentage;
-                bullet.radius = 5 + 20 * chargePercentage; // Ajuste o tamanho máximo conforme necessário
-
-                player.canShoot = false;
-                setTimeout(() => { player.canShoot = true; }, player.shootCooldown);
-                player.isCharging = false;
-                player.chargeTime = 0;
-
-                // Incrementar o contador de tiros carregados
-                if (chargePercentage > 0.5) {
-                    player.chargedShots++;
-                    if (player.chargedShots >= player.maxChargedShots) {
-                        player.overheated = true;
-                        player.chargedShots = 0;
-                        setTimeout(() => {
-                            player.overheated = false;
-                        }, player.overheatCooldown);
-                    }
-                }
-            }
-        }
-
-        document.addEventListener('keydown', (e) => {
-            if (e.code === 'KeyX' && !player.isCharging && player.canShoot && !player.overheated) {
-                player.isCharging = true;
-                player.chargeTime = 0;
-            }
-            if (e.code === 'Space') {
-                keys.Space = true;
-            }
-            if (e.code === 'KeyX') {
-                keys.KeyX = true;
-            }
-            if (e.code === 'KeyQ') {
-                if (player.canDash && !player.isDashing && !player.isTired) {
-                    player.isDashing = true;
-                    player.canDash = false;
-                }
-            }
-        });
-
-        document.addEventListener('keyup', (e) => {
-            if (e.code === 'KeyX' && player.isCharging) {
-                fireBullet();
-            }
-            if (e.code === 'Space') {
-                keys.Space = false;
-            }
-            if (e.code === 'KeyX') {
-                keys.KeyX = false;
-            }
-        });
-
-        // Substitua a função drawPlayerSprite por esta nova versão
-        function drawPlayerSprite(ctx, player) {
-            // Ajuste o tamanho do jogador para corresponder ao sprite
-            const spriteRatio = player.sprite.width / player.sprite.height;
-            player.height = 33; // Altura um pouco maior que o sprite original para melhor visibilidade
-            player.width = player.height * spriteRatio;
-
-            ctx.save();
-            ctx.translate(player.x, player.y);
-            if (player.direction === -1) {
-                ctx.scale(-1, 1);
-                ctx.translate(-player.width, 0);
-            }
-
-            if (player.isIdle && player.idleSpriteLoaded) {
-                const frameWidth = player.idleSprite.width / player.idleFrames;
-                const frameHeight = player.idleSprite.height;
-                ctx.drawImage(
-                    player.idleSprite,
-                    player.currentIdleFrame * frameWidth, 0,
-                    frameWidth, frameHeight,
-                    0, 0,
-                    player.width, player.height
-                );
-            } else if (player.spriteLoaded) {
-                ctx.drawImage(player.sprite, 0, 0, player.sprite.width, player.sprite.height, 0, 0, player.width, player.height);
-            } else {
-                // Desenhe um retângulo colorido como fallback se nenhum sprite estiver carregado
-                ctx.fillStyle = 'red';
-                ctx.fillRect(0, 0, player.width, player.height);
-            }
-
-            ctx.restore();
-
-            // Adicione um contorno para tornar o jogador mais visível
-            ctx.strokeStyle = 'white';
-            ctx.lineWidth = 1;
-            ctx.strokeRect(player.x, player.y, player.width, player.height);
-
-            console.log("Desenhando jogador em:", player.x, player.y, "Tamanho:", player.width, player.height);
-        }
-
-        // Adicione um evento para pausar o jogo
-        document.addEventListener('keydown', (e) => {
-            if (e.code === 'Escape' && gameState === 'playing') {
-                gameState = 'menu';
-                showMenu();
-            }
-        });
-
-        // Adicione um listener de redimensionamento e chame resizeCanvas no início
-        window.addEventListener('resize', resizeCanvas);
-        resizeCanvas();
-
-        // Inicialize o jogo no estado de menu
-        showMenu();
-
-        function showVictoryScreen() {
-            cancelAnimationFrame(animationFrameId); // Para o loop do jogo
-            
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
-            ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
-            
-            ctx.fillStyle = 'gold';
-            ctx.font = 'bold 48px Arial';
-            ctx.textAlign = 'center';
-            ctx.fillText('Parabéns! Você venceu o jogo!', GAME_WIDTH / 2, GAME_HEIGHT / 2 - 50);
-            
-            ctx.fillStyle = 'white';
-            ctx.font = '24px Arial';
-            ctx.fillText('Você derrotou o chefe final e salvou o mundo!', GAME_WIDTH / 2, GAME_HEIGHT / 2 + 20);
-            
-            ctx.fillStyle = 'lightblue';
-            ctx.fillText('Pressione ENTER para jogar novamente', GAME_WIDTH / 2, GAME_HEIGHT / 2 + 70);
-            
-            document.addEventListener('keydown', restartGameOnEnter);
-        }
-
-        function restartGameOnEnter(e) {
-            if (e.code === 'Enter' && gameState === 'victory') {
-                document.removeEventListener('keydown', restartGameOnEnter);
-                reiniciarJogo();
-                gameState = 'playing';
-                animationFrameId = requestAnimationFrame(gameLoop);
-            }
-        }
-
-        function gameOver() {
-            gameState = 'menu';
-            cancelAnimationFrame(animationFrameId);
-            showMenu();
-            alert("Game Over! Você perdeu todas as suas vidas.");
-        }
-
-        // Adicione este código no início do seu script para garantir que o canvas seja configurado corretamente
-        window.onload = function() {
-            canvas.width = GAME_WIDTH;
-            canvas.height = GAME_HEIGHT;
-            console.log("Canvas configurado com dimensões:", canvas.width, canvas.height);
-            gameLoop();
-        };
 
     </script>
+
 </body>
 </html>
