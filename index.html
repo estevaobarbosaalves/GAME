@@ -82,6 +82,22 @@
                 enemy.body.setCollideWorldBounds(true);
             }
 
+            // Criar inimigos em intervalos aleatórios
+            setInterval(() => {
+                if (enemies.children.size < 3) { // Verifica se há menos de 3 inimigos
+                    let enemy;
+                    let positionValid = false;
+                    while (!positionValid) {
+                        const x = Phaser.Math.Between(0, 800);
+                        const y = 0;
+                        enemy = this.add.rectangle(x, y, 32, 32, 0xFF0000);
+                        positionValid = !enemies.children.entries.some(e => Phaser.Geom.Intersects.RectangleToRectangle(enemy.getBounds(), e.getBounds()));
+                    }
+                    enemies.add(enemy);
+                    enemy.body.setCollideWorldBounds(true);
+                }
+            }, Phaser.Math.Between(1000, 3000)); // Intervalo aleatório entre 1 e 3 segundos
+
             // Balas
             bullets = this.physics.add.group({
                 allowGravity: false, // Desativar gravidade para as balas
