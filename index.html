@@ -70,7 +70,14 @@
             // Inimigos
             enemies = this.physics.add.group();
             for (let i = 0; i < 3; i++) {
-                const enemy = this.add.rectangle(Phaser.Math.Between(0, 800), 0, 32, 32, 0xFF0000);
+                let enemy;
+                let positionValid = false;
+                while (!positionValid) {
+                    const x = Phaser.Math.Between(0, 800);
+                    const y = 0;
+                    enemy = this.add.rectangle(x, y, 32, 32, 0xFF0000);
+                    positionValid = !enemies.children.entries.some(e => Phaser.Geom.Intersects.RectangleToRectangle(enemy.getBounds(), e.getBounds()));
+                }
                 enemies.add(enemy);
                 enemy.body.setCollideWorldBounds(true);
             }
