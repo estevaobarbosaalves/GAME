@@ -152,7 +152,7 @@
         player.sprite.onerror = function() {
             console.error("Erro ao carregar o sprite do jogador");
         };
-        player.sprite.src = 'pixil-frame0.png'; // Caminho para o novo sprite
+        player.sprite.src = 'pixil-frame-0.png'; // Caminho para o novo sprite
 
         player.idleSprite.onload = function() {
             player.idleSpriteLoaded = true;
@@ -216,12 +216,16 @@
                 health: health, maxHealth: health, isStrong: isStrong,
                 color: isStrong ? 'red' : 'orange',
                 verticalVelocity: 0, direction: 1,
-                animationFrame: 0, // Nova propriedade para controlar a animação
-                animationTimer: 0 // Timer para controlar a velocidade da animação
+                animationFrame: 0,
+                animationTimer: 0,
+                spriteWidth: 32, // Width of each sprite frame
+                spriteHeight: 32, // Height of each sprite frame
+                spriteFrames: 4, // Number of frames in the walking animation
             };
         }
 
         function moveObject(obj) {
+            obj.prevX = obj.x;
             if (obj === player) {
                 if (player.isDashing) {
                     obj.x += obj.dashSpeed * obj.direction;
@@ -235,7 +239,7 @@
                 if (Math.abs(player.x - boss.x) > 100) { // Mova em direção ao jogador se estiver longe
                     boss.x += boss.speed * (player.x > boss.x ? 1 : -1);
                 }
-                boss.direction = player.x > boss.x ? 1 : -1; // Atualize a direção do chefe
+                boss.direction = player.x > boss.x ? 1 : -1; // Atualize a dire��ão do chefe
 
                 // Lógica de salto do chefe
                 if (isOnGround(boss) && Math.random() < 0.02) { // 2% de chance de pular quando no chão
@@ -422,110 +426,91 @@
             }
         }
 
-        // Modifique a função drawWeakRobotSprite para incluir a animação
-        function drawWeakRobotSprite(ctx, robot) {
-            const originalWidth = 7;
-            const originalHeight = 9;
-            const scale = Math.min(robot.width / originalWidth, robot.height / originalHeight);
+        // Adicione um evento para pausar o jogo
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Escape' && gameState === 'playing') {
+                gameState = 'menu';
+                showMenu();
+            }
+        });
+
+        // Adicione um listener de redimensionamento e chame resizeCanvas no início
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // Inicialize o jogo no estado de menu
+        showMenu();
+
+        function showVictoryScreen() {
+            cancelAnimationFrame(animationFrameId); // Para o loop do jogo
+            
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+            ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+            
+            ctx.fillStyle = 'gold';
+            ctx.font = 'bold 48px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('Parabéns! Você venceu o jogo!', GAME_WIDTH / 2, GAME_HEIGHT / 2 - 50);
+            
+            ctx.fillStyle = 'white';
+            ctx.font = '24px Arial';
+            ctx.fillText('Você derrotou o chefe final e salvou o mundo!', GAME_WIDTH / 2, GAME_HEIGHT / 2 + 20);
+            
+            ctx.fillStyle = 'lightblue';
+            ctx.fillText('Pressione ENTER para jogar novamente', GAME_WIDTH / 2, GAME_HEIGHT / 2 + 70);
+            
+            document.addEventListener('keydown', restartGameOnEnter);
+        }
+
+        function restartGameOnEnter(e) {
+            if (e.code === 'Enter' && gameState === 'victory') {
+                document.removeEventListener('keydown', restartGameOnEnter);
+                reiniciarJogo();
+                gameState = 'playing';
+                animationFrameId = requestAnimationFrame(gameLoop);
+            }
+        }
+
+        function gameOver() {
+            gameState = 'menu';
+            cancelAnimationFrame(animationFrameId);
+            showMenu();
+            alert("Game Over! Você perdeu todas as suas vidas.");
+        }
+
+        // Adicione este código no início do seu script para garantir que o canvas seja configurado corretamente
+        window.onload = function() {
+            canvas.width = GAME_WIDTH;
+            canvas.height = GAME_HEIGHT;
+            console.log("Canvas configurado com dimensões:", canvas.width, canvas.height);
+            gameLoop();
+        };
+
+        const robotSpriteSheet = new Image();
+        robotSpriteSheet.src = 'robot-spritessheet.png';
+
+        function drawRobotSprite(ctx, robot) {
+            const scale = Math.min(robot.width / robot.spriteWidth, robot.height / robot.spriteHeight);
             
             ctx.save();
             ctx.translate(robot.x, robot.y);
-            ctx.scale(scale, scale);
-            
-            // Corpo principal (cinza escuro)
-            ctx.fillStyle = '#2D2D2D';
-            ctx.fillRect(1, 2, 5, 6);
-            
-            // Cabeça (cinza claro)
-            ctx.fillStyle = '#9B9B9B';
-            ctx.fillRect(0, 0, 7, 3);
-            
-            // Antena
-            ctx.fillStyle = '#2D2D2D';
-            ctx.fillRect(1, 0, 1, 1);
-            
-            // Olhos
-            ctx.fillStyle = '#4A4A4A';
-            ctx.fillRect(2, 1, 1, 1);
-            ctx.fillRect(4, 1, 1, 1);
-            
-            // Boca
-            ctx.fillRect(3, 2, 1, 1);
-            
-            // Pernas (animadas)
-            if (robot.animationFrame === 0) {
-                ctx.fillRect(1, 8, 2, 1);
-                ctx.fillRect(4, 8, 2, 1);
-            } else {
-                ctx.fillRect(0, 8, 2, 1);
-                ctx.fillRect(5, 8, 2, 1);
-            }
-            
-            ctx.restore();
-        }
-
-        // Adicione esta nova função para desenhar a bola de energia
-        function drawChargeBall(ctx, player, chargePercentage) {
-            const maxRadius = player.width / 2;
-            const radius = maxRadius * chargePercentage;
-            let centerX, centerY;
-
-            if (player.direction === 1) { // Jogador olhando para a direita
-                centerX = player.x + player.width + radius;
-            } else { // Jogador olhando para a esquerda
-                centerX = player.x - radius;
-            }
-            centerY = player.y + player.height / 2;
-
-            ctx.beginPath();
-            ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
-            ctx.fillStyle = `rgba(255, 255, 0, ${chargePercentage})`;
-            ctx.fill();
-            ctx.strokeStyle = 'orange';
-            ctx.lineWidth = 2;
-            ctx.stroke();
-        }
-
-        // Substitua a função drawPlayerSprite por esta nova versão
-        function drawPlayerSprite(ctx, player) {
-            // Ajuste o tamanho do jogador para corresponder ao sprite
-            const spriteRatio = player.sprite.width / player.sprite.height;
-            player.height = 33; // Altura um pouco maior que o sprite original para melhor visibilidade
-            player.width = player.height * spriteRatio;
-
-            ctx.save();
-            ctx.translate(player.x, player.y);
-            if (player.direction === -1) {
+            if (robot.direction === -1) {
                 ctx.scale(-1, 1);
-                ctx.translate(-player.width, 0);
+                ctx.translate(-robot.width, 0);
             }
-
-            if (player.isIdle && player.idleSpriteLoaded) {
-                const frameWidth = player.idleSprite.width / player.idleFrames;
-                const frameHeight = player.idleSprite.height;
-                ctx.drawImage(
-                    player.idleSprite,
-                    player.currentIdleFrame * frameWidth, 0,
-                    frameWidth, frameHeight,
-                    0, 0,
-                    player.width, player.height
-                );
-            } else if (player.spriteLoaded) {
-                ctx.drawImage(player.sprite, 0, 0, player.sprite.width, player.sprite.height, 0, 0, player.width, player.height);
-            } else {
-                // Desenhe um retângulo colorido como fallback se nenhum sprite estiver carregado
-                ctx.fillStyle = 'red';
-                ctx.fillRect(0, 0, player.width, player.height);
-            }
-
+            
+            const isMoving = robot.x !== robot.prevX;
+            const spriteY = isMoving ? 0 : robot.spriteHeight; // Use top row for walking, bottom row for idle
+            
+            ctx.drawImage(
+                robotSpriteSheet,
+                robot.animationFrame * robot.spriteWidth, spriteY,
+                robot.spriteWidth, robot.spriteHeight,
+                0, 0,
+                robot.width, robot.height
+            );
+            
             ctx.restore();
-
-            // Adicione um contorno para tornar o jogador mais visível
-            ctx.strokeStyle = 'white';
-            ctx.lineWidth = 1;
-            ctx.strokeRect(player.x, player.y, player.width, player.height);
-
-            console.log("Desenhando jogador em:", player.x, player.y, "Tamanho:", player.width, player.height);
         }
 
         // No gameLoop, adicione a lógica de animação
@@ -651,19 +636,14 @@
             robots.forEach((robot, index) => {
                 moveObject(robot);
                 
-                // Atualizar a animação
+                // Update animation
                 robot.animationTimer += deltaTime;
-                if (robot.animationTimer > 200) { // Muda a cada 200ms
-                    robot.animationFrame = 1 - robot.animationFrame; // Alterna entre 0 e 1
+                if (robot.animationTimer > 200) { // Change frame every 200ms
+                    robot.animationFrame = (robot.animationFrame + 1) % robot.spriteFrames;
                     robot.animationTimer = 0;
                 }
                 
-                if (robot.isStrong) {
-                    ctx.fillStyle = robot.color;
-                    ctx.fillRect(robot.x, robot.y, robot.width, robot.height);
-                } else {
-                    drawWeakRobotSprite(ctx, robot);
-                }
+                drawRobotSprite(ctx, robot);
 
                 if (checkCollision(player, robot)) {
                     player.lives--;
@@ -874,6 +854,48 @@
             }
         });
 
+        // Substitua a função drawPlayerSprite por esta nova versão
+        function drawPlayerSprite(ctx, player) {
+            // Ajuste o tamanho do jogador para corresponder ao sprite
+            const spriteRatio = player.sprite.width / player.sprite.height;
+            player.height = 33; // Altura um pouco maior que o sprite original para melhor visibilidade
+            player.width = player.height * spriteRatio;
+
+            ctx.save();
+            ctx.translate(player.x, player.y);
+            if (player.direction === -1) {
+                ctx.scale(-1, 1);
+                ctx.translate(-player.width, 0);
+            }
+
+            if (player.isIdle && player.idleSpriteLoaded) {
+                const frameWidth = player.idleSprite.width / player.idleFrames;
+                const frameHeight = player.idleSprite.height;
+                ctx.drawImage(
+                    player.idleSprite,
+                    player.currentIdleFrame * frameWidth, 0,
+                    frameWidth, frameHeight,
+                    0, 0,
+                    player.width, player.height
+                );
+            } else if (player.spriteLoaded) {
+                ctx.drawImage(player.sprite, 0, 0, player.sprite.width, player.sprite.height, 0, 0, player.width, player.height);
+            } else {
+                // Desenhe um retângulo colorido como fallback se nenhum sprite estiver carregado
+                ctx.fillStyle = 'red';
+                ctx.fillRect(0, 0, player.width, player.height);
+            }
+
+            ctx.restore();
+
+            // Adicione um contorno para tornar o jogador mais visível
+            ctx.strokeStyle = 'white';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(player.x, player.y, player.width, player.height);
+
+            console.log("Desenhando jogador em:", player.x, player.y, "Tamanho:", player.width, player.height);
+        }
+
         // Adicione um evento para pausar o jogo
         document.addEventListener('keydown', (e) => {
             if (e.code === 'Escape' && gameState === 'playing') {
@@ -933,6 +955,7 @@
             console.log("Canvas configurado com dimensões:", canvas.width, canvas.height);
             gameLoop();
         };
+
     </script>
 </body>
 </html>
