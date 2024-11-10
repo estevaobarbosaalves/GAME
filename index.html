@@ -723,6 +723,12 @@
                 ctx.fillStyle = boss.color;
                 ctx.fillRect(boss.x, boss.y, boss.width, boss.height);
                 
+                // Adicionar o nome "Zectrom" acima do boss
+                ctx.fillStyle = 'white';
+                ctx.font = 'bold 24px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText('Zectrom', boss.x + boss.width / 2, boss.y - 60);
+                
                 // Desenhar projéteis do boss
                 boss.projectiles.forEach(proj => {
                     ctx.beginPath();
@@ -801,9 +807,9 @@
             ctx.fillText(`Vidas: ${player.lives}`, 10, 30);
             ctx.fillText(`Onda: ${currentWave}`, 10, 60);
             
-            // Modificar esta parte para mostrar "Boss HP" na onda 10
+            // Modificar para mostrar "Zectrom HP" na onda 10
             if (currentWave === 10 && boss.active) {
-                ctx.fillText(`Boss HP: ${boss.health}`, 10, 90);
+                ctx.fillText(`Zectrom HP: ${boss.health}`, 10, 90);
             } else {
                 ctx.fillText(`Inimigos: ${robots.length}`, 10, 90);
             }
