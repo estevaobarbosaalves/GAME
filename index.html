@@ -189,20 +189,72 @@
         // Adicione esta nova constante para o chefe
         const boss = {
             x: GAME_WIDTH / 2,
-            y: ground.y - 100,
-            width: 80,
-            height: 100,
-            speed: 3,
-            jumpStrength: 25,
-            health: 500,
-            maxHealth: 500,
+            y: ground.y - 120, // Um pouco maior que os robôs normais
+            width: 60,
+            height: 120,
+            speed: 4,
+            jumpStrength: 20,
+            health: 300,
+            maxHealth: 300,
             verticalVelocity: 0,
             direction: 1,
-            color: 'purple',
+            color: '#800080', // Roxo escuro
             active: false,
-            barWidth: 200, // Largura da barra de vida
-            barHeight: 20, // Altura da barra de vida
+            attackCooldown: 1500,
+            lastAttackTime: 0,
+            projectiles: [], // Array para guardar os projéteis do boss
+            attackPatterns: ['shoot', 'dash', 'jump'],
+            currentPattern: 0,
+            patternTimer: 0,
+            isDashing: false,
+            dashSpeed: 12,
+            dashDuration: 500,
+            dashCooldown: 2000,
+            lastDashTime: 0
         };
+
+        // Adicionar esta nova função para gerenciar os projéteis do boss
+        function updateBossProjectiles() {
+            for (let i = boss.projectiles.length - 1; i >= 0; i--) {
+                const proj = boss.projectiles[i];
+                proj.x += proj.speed * proj.direction;
+                proj.y += Math.sin(proj.x / 100) * 2; // Movimento ondulante
+
+                // Remover projéteis fora da tela
+                if (proj.x < 0 || proj.x > GAME_WIDTH) {
+                    boss.projectiles.splice(i, 1);
+                    continue;
+                }
+
+                // Verificar colisão com o jogador
+                if (checkCollision(player, {
+                    x: proj.x - proj.radius,
+                    y: proj.y - proj.radius,
+                    width: proj.radius * 2,
+                    height: proj.radius * 2
+                })) {
+                    player.lives--;
+                    boss.projectiles.splice(i, 1);
+                    if (player.lives <= 0) {
+                        gameOver();
+                    } else {
+                        respawnPlayer();
+                    }
+                }
+            }
+        }
+
+        // Adicionar esta função para o boss atirar
+        function bossShoot() {
+            const projectile = {
+                x: boss.x + boss.width / 2,
+                y: boss.y + boss.height / 2,
+                radius: 8,
+                speed: 8,
+                direction: boss.direction
+            };
+            boss.projectiles.push(projectile);
+        }
 
         // Modifique a função createRobot para incluir uma propriedade de animação
         function createRobot(isStrong) {
@@ -215,12 +267,7 @@
                 speed: isStrong ? 2 : 1, jumpStrength: isStrong ? 20 : 18,
                 health: health, maxHealth: health, isStrong: isStrong,
                 color: isStrong ? 'red' : 'orange',
-                verticalVelocity: 0, direction: 1,
-                animationFrame: 0,
-                animationTimer: 0,
-                spriteWidth: 32, // Width of each sprite frame
-                spriteHeight: 32, // Height of each sprite frame
-                spriteFrames: 4, // Number of frames in the walking animation
+                verticalVelocity: 0, direction: 1
             };
         }
 
@@ -235,31 +282,93 @@
                     if (keys['Space'] && isOnGround(obj)) { obj.verticalVelocity = -obj.jumpStrength; }
                 }
             } else if (obj === boss) {
-                // Lógica de movimento do chefe
-                if (Math.abs(player.x - boss.x) > 100) { // Mova em direção ao jogador se estiver longe
-                    boss.x += boss.speed * (player.x > boss.x ? 1 : -1);
+                const currentTime = Date.now();
+                
+                // Atualizar padrão de ataque
+                boss.patternTimer += 16; // Aproximadamente 1 frame
+                if (boss.patternTimer >= 3000) { // Trocar padrão a cada 3 segundos
+                    boss.currentPattern = (boss.currentPattern + 1) % boss.attackPatterns.length;
+                    boss.patternTimer = 0;
                 }
-                boss.direction = player.x > boss.x ? 1 : -1; // Atualize a dire��ão do chefe
 
-                // Lógica de salto do chefe
-                if (isOnGround(boss) && Math.random() < 0.02) { // 2% de chance de pular quando no chão
-                    boss.verticalVelocity = -boss.jumpStrength;
+                const pattern = boss.attackPatterns[boss.currentPattern];
+                
+                switch (pattern) {
+                    case 'shoot':
+                        if (currentTime - boss.lastAttackTime > boss.attackCooldown) {
+                            bossShoot();
+                            boss.lastAttackTime = currentTime;
+                        }
+                        // Mover-se lentamente durante o ataque
+                        boss.x += boss.speed * 0.5 * (player.x > boss.x ? 1 : -1);
+                        break;
+                        
+                    case 'dash':
+                        if (!boss.isDashing && currentTime - boss.lastDashTime > boss.dashCooldown) {
+                            boss.isDashing = true;
+                            boss.lastDashTime = currentTime;
+                            boss.direction = player.x > boss.x ? 1 : -1;
+                        }
+                        
+                        if (boss.isDashing) {
+                            boss.x += boss.dashSpeed * boss.direction;
+                            if (currentTime - boss.lastDashTime > boss.dashDuration) {
+                                boss.isDashing = false;
+                            }
+                        }
+                        break;
+                        
+                    case 'jump':
+                        if (isOnGround(boss)) {
+                            boss.verticalVelocity = -boss.jumpStrength;
+                        }
+                        boss.x += boss.speed * (player.x > boss.x ? 1 : -1);
+                        break;
                 }
+
+                boss.direction = player.x > boss.x ? 1 : -1;
+                boss.x = Math.max(0, Math.min(boss.x, GAME_WIDTH - boss.width));
             } else {
                 obj.x += obj.speed * (obj.x < player.x ? 1 : -1);
                 if (isOnGround(obj) && Math.random() < 0.01) { obj.verticalVelocity = -obj.jumpStrength; }
             }
             obj.x = Math.max(0, Math.min(GAME_WIDTH - obj.width, obj.x));
             obj.verticalVelocity += 0.6;
-            obj.y += obj.verticalVelocity;
+            const nextY = obj.y + obj.verticalVelocity;
+
+            // Verificar colisão com plataformas
+            let platformCollision = false;
             for (let platform of platforms) {
-                if (obj.x < platform.x + platform.width && obj.x + obj.width > platform.x &&
-                    obj.y + obj.height >= platform.y && obj.y + obj.height <= platform.y + platform.height / 2) {
-                    obj.y = platform.y - obj.height;
-                    obj.verticalVelocity = 0;
-                    break;
+                // Verificar se o objeto está dentro da largura da plataforma
+                if (obj.x + obj.width > platform.x && obj.x < platform.x + platform.width) {
+                    // Caindo
+                    if (obj.verticalVelocity > 0) {
+                        // Verificar se o objeto vai atravessar a plataforma neste frame
+                        if (obj.y + obj.height <= platform.y && nextY + obj.height >= platform.y) {
+                            obj.y = platform.y - obj.height;
+                            obj.verticalVelocity = 0;
+                            platformCollision = true;
+                            break;
+                        }
+                    }
+                    // Subindo (colisão com a parte de baixo da plataforma)
+                    else if (obj.verticalVelocity < 0) {
+                        if (obj.y >= platform.y + platform.height && nextY <= platform.y + platform.height) {
+                            obj.y = platform.y + platform.height;
+                            obj.verticalVelocity = 0;
+                            platformCollision = true;
+                            break;
+                        }
+                    }
                 }
             }
+
+            // Se não houve colisão com plataforma, aplicar a velocidade vertical
+            if (!platformCollision) {
+                obj.y = nextY;
+            }
+
+            // Colisão com o chão
             if (obj.y + obj.height > ground.y) {
                 obj.y = ground.y - obj.height;
                 obj.verticalVelocity = 0;
@@ -292,7 +401,10 @@
         function updateBullet() {
             if (bullet.isActive) {
                 bullet.x += bullet.speed * bullet.direction;
-                if (bullet.x - bullet.radius < 0 || bullet.x + bullet.radius > GAME_WIDTH) bullet.isActive = false;
+                // Verifique se a bala saiu dos limites do mapa
+                if (bullet.x < 0 || bullet.x > GAME_WIDTH) {
+                    bullet.isActive = false;
+                }
             }
         }
 
@@ -476,6 +588,7 @@
             cancelAnimationFrame(animationFrameId);
             showMenu();
             alert("Game Over! Você perdeu todas as suas vidas.");
+            reiniciarJogo(); // Adicione esta linha para reiniciar o jogo
         }
 
         // Adicione este código no início do seu script para garantir que o canvas seja configurado corretamente
@@ -486,34 +599,35 @@
             gameLoop();
         };
 
-        const robotSpriteSheet = new Image();
-        robotSpriteSheet.src = 'robot-spritessheet.png';
-
-        function drawRobotSprite(ctx, robot) {
-            const scale = Math.min(robot.width / robot.spriteWidth, robot.height / robot.spriteHeight);
-            
+        // Substitua a função drawRobotSprite por esta versão simplificada
+        function drawRobot(ctx, robot) {
             ctx.save();
             ctx.translate(robot.x, robot.y);
-            if (robot.direction === -1) {
-                ctx.scale(-1, 1);
-                ctx.translate(-robot.width, 0);
-            }
             
-            const isMoving = robot.x !== robot.prevX;
-            const spriteY = isMoving ? 0 : robot.spriteHeight; // Use top row for walking, bottom row for idle
+            // Desenhar o corpo do robô
+            ctx.fillStyle = robot.isStrong ? 'red' : 'orange';
+            ctx.fillRect(0, 0, robot.width, robot.height);
             
-            ctx.drawImage(
-                robotSpriteSheet,
-                robot.animationFrame * robot.spriteWidth, spriteY,
-                robot.spriteWidth, robot.spriteHeight,
-                0, 0,
-                robot.width, robot.height
-            );
+            // Desenhar os "olhos" do robô
+            ctx.fillStyle = 'white';
+            const eyeSize = robot.width * 0.2;
+            ctx.fillRect(robot.width * 0.2, robot.height * 0.2, eyeSize, eyeSize);
+            ctx.fillRect(robot.width * 0.6, robot.height * 0.2, eyeSize, eyeSize);
+            
+            // Desenhar barra de vida do robô
+            const healthBarWidth = robot.width;
+            const healthBarHeight = 5;
+            const healthPercentage = robot.health / robot.maxHealth;
+            
+            ctx.fillStyle = 'red';
+            ctx.fillRect(0, -10, healthBarWidth, healthBarHeight);
+            ctx.fillStyle = 'green';
+            ctx.fillRect(0, -10, healthBarWidth * healthPercentage, healthBarHeight);
             
             ctx.restore();
         }
 
-        // No gameLoop, adicione a lógica de animação
+        // No gameLoop, substitua a chamada para drawRobotSprite por drawRobot
         function gameLoop(currentTime) {
             if (gameState !== 'playing') {
                 cancelAnimationFrame(animationFrameId);
@@ -523,16 +637,9 @@
             const deltaTime = currentTime - lastTime;
             lastTime = currentTime;
 
-            // Limpe o canvas antes de desenhar
             ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-            // Desenhe um fundo para garantir que o canvas está visível
-            ctx.fillStyle = 'black';
+            ctx.fillStyle = 'skyblue';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-            console.log("Posição do jogador:", player.x, player.y);
-            console.log("Sprite carregado:", player.spriteLoaded);
-            console.log("Dimensões do canvas:", canvas.width, canvas.height);
 
             // Calcular a posição da câmera
             const cameraX = Math.max(0, Math.min(player.x - canvas.width / 2, GAME_WIDTH - canvas.width));
@@ -540,10 +647,7 @@
             ctx.save();
             ctx.translate(-cameraX, 0);
 
-            // Desenhar o fundo
-            ctx.fillStyle = 'skyblue';
-            ctx.fillRect(cameraX, 0, canvas.width, GAME_HEIGHT);
-
+            // Desenhar plataformas
             ctx.fillStyle = 'gray';
             for (let platform of platforms) {
                 if (platform.x + platform.width > cameraX && platform.x < cameraX + canvas.width) {
@@ -551,20 +655,17 @@
                 }
             }
 
+            // Desenhar chão
             ctx.fillStyle = 'gray';
             ctx.fillRect(cameraX, ground.y, canvas.width, ground.height);
 
+            // Atualizar e desenhar jogador
             moveObject(player);
             drawPlayerSprite(ctx, player);
 
-            // Desenhar a bola de energia se estiver carregando
-            if (player.isCharging) {
-                const chargePercentage = player.chargeTime / player.maxChargeTime;
-                drawChargeBall(ctx, player, chargePercentage);
-            }
-
-            updateBullet();
+            // Atualizar e desenhar bala
             if (bullet.isActive) {
+                updateBullet();
                 ctx.beginPath();
                 ctx.arc(bullet.x, bullet.y, bullet.radius, 0, Math.PI * 2);
                 ctx.fillStyle = 'yellow';
@@ -572,145 +673,145 @@
                 ctx.strokeStyle = 'orange';
                 ctx.lineWidth = 2;
                 ctx.stroke();
-            }
 
-            if (boss.active) {
-                moveObject(boss);
-                ctx.fillStyle = boss.color;
-                ctx.fillRect(boss.x, boss.y, boss.width, boss.height);
-
-                // Desenhar a barra de vida do chefe
-                const barX = boss.x + (boss.width - boss.barWidth) / 2;
-                const barY = boss.y - 40;
-
-                // Fundo da barra de vida
-                ctx.fillStyle = 'gray';
-                ctx.fillRect(barX, barY, boss.barWidth, boss.barHeight);
-
-                // Barra de vida atual
-                ctx.fillStyle = 'red';
-                const currentHealthWidth = (boss.health / boss.maxHealth) * boss.barWidth;
-                ctx.fillRect(barX, barY, currentHealthWidth, boss.barHeight);
-
-                // Contorno da barra de vida
-                ctx.strokeStyle = 'black';
-                ctx.lineWidth = 2;
-                ctx.strokeRect(barX, barY, boss.barWidth, boss.barHeight);
-
-                // Texto "Boss"
-                ctx.fillStyle = 'white';
-                ctx.font = 'bold 16px Arial';
-                ctx.textAlign = 'center';
-                ctx.fillText('Boss', boss.x + boss.width / 2, barY + boss.barHeight + 20);
-
-                // Resetar alinhamento do texto
-                ctx.textAlign = 'left';
-
-                if (checkCollision(player, boss)) {
-                    player.lives--;
-                    if (player.lives <= 0) {
-                        gameOver();
-                        return;
-                    } else {
-                        player.x = GAME_WIDTH / 2;
-                        player.y = GAME_HEIGHT - 80;
+                // Verificar colisão com robôs
+                for (let i = robots.length - 1; i >= 0; i--) {
+                    if (checkBulletCollision(bullet, robots[i])) {
+                        robots[i].health -= bullet.damage;
+                        bullet.isActive = false;
+                        if (robots[i].health <= 0) {
+                            robots.splice(i, 1);
+                            enemiesDefeated++;
+                        }
+                        break;
                     }
                 }
 
-                if (bullet.isActive && checkCollision(bullet, boss)) {
-                    bullet.isActive = false;
+                // Verificar colisão com o chefe
+                if (boss.active && checkBulletCollision(bullet, boss)) {
                     boss.health -= bullet.damage;
+                    bullet.isActive = false;
                     if (boss.health <= 0) {
                         boss.active = false;
-                        if (currentWave === 10) {
-                            gameState = 'victory'; // Muda o estado do jogo para vitória
-                            showVictoryScreen(); // Chama a tela de vitória
-                        } else {
-                            currentWave++;
-                            initializeWave();
-                        }
+                        showVictoryScreen();
                     }
                 }
             }
 
+            // Atualizar e desenhar robôs
             robots.forEach((robot, index) => {
                 moveObject(robot);
+                drawRobot(ctx, robot);
                 
-                // Update animation
-                robot.animationTimer += deltaTime;
-                if (robot.animationTimer > 200) { // Change frame every 200ms
-                    robot.animationFrame = (robot.animationFrame + 1) % robot.spriteFrames;
-                    robot.animationTimer = 0;
-                }
-                
-                drawRobotSprite(ctx, robot);
-
+                // Verificar colisão com o jogador
                 if (checkCollision(player, robot)) {
                     player.lives--;
                     if (player.lives <= 0) {
                         gameOver();
-                        return;
                     } else {
-                        player.x = GAME_WIDTH / 2;
-                        player.y = GAME_HEIGHT - 80;
-                        robots[index] = createRobot(robot.isStrong);
+                        respawnPlayer();
                     }
                 }
-
-                if (bullet.isActive && checkCollision(bullet, robot)) {
-                    bullet.isActive = false;
-                    robot.health -= bullet.damage;
-                    if (robot.health <= 0) {
-                        robots.splice(index, 1);
-                        enemiesDefeated++;
-                        if (robots.length === 0) {
-                            currentWave++;
-                            initializeWave();
-                        }
-                    }
-                }
-
-                ctx.fillStyle = 'green';
-                let healthWidth = (robot.health / robot.maxHealth) * robot.width;
-                ctx.fillRect(robot.x, robot.y - 10, healthWidth, 5);
             });
+
+            // Atualizar e desenhar chefe (se ativo)
+            if (boss.active) {
+                moveObject(boss);
+                updateBossProjectiles();
+                
+                // Desenhar o boss
+                ctx.fillStyle = boss.color;
+                ctx.fillRect(boss.x, boss.y, boss.width, boss.height);
+                
+                // Desenhar projéteis do boss
+                boss.projectiles.forEach(proj => {
+                    ctx.beginPath();
+                    ctx.arc(proj.x, proj.y, proj.radius, 0, Math.PI * 2);
+                    ctx.fillStyle = '#ff4444';
+                    ctx.fill();
+                });
+                
+                // Desenhar barra de vida do boss
+                const healthBarWidth = 200;
+                const healthBarHeight = 20;
+                const healthPercentage = boss.health / boss.maxHealth;
+                const barX = boss.x + (boss.width / 2) - (healthBarWidth / 2);
+                
+                ctx.fillStyle = 'red';
+                ctx.fillRect(barX, boss.y - 40, healthBarWidth, healthBarHeight);
+                ctx.fillStyle = 'green';
+                ctx.fillRect(barX, boss.y - 40, healthBarWidth * healthPercentage, healthBarHeight);
+                
+                // Verificar colisão com o jogador
+                if (checkCollision(player, boss)) {
+                    player.lives--;
+                    if (player.lives <= 0) {
+                        gameOver();
+                    } else {
+                        respawnPlayer();
+                    }
+                }
+            }
+
+            // Adicionar antes do ctx.restore()
+            spawnHealthPowerUp();
+            drawHealthPowerUp(ctx);
+            
+            // Verificar colisão com power-up
+            if (healthPowerUp.active && player.lives < 3 && checkCollision(player, healthPowerUp)) {
+                player.lives++;
+                healthPowerUp.active = false;
+                healthPowerUp.lastSpawnTime = Date.now();
+                
+                // Efeito visual de cura
+                ctx.save();
+                ctx.fillStyle = 'rgba(0, 255, 0, 0.3)';
+                ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+                ctx.restore();
+            }
 
             ctx.restore();
 
+            // Desenhar UI
+            drawUI();
+
+            // Lógica de carregamento de tiro
+            handleCharging(deltaTime);
+
+            // Lógica de dash
+            handleDash(deltaTime);
+
+            // Verificar se todos os inimigos foram derrotados
+            if (robots.length === 0 && !boss.active) {
+                currentWave++;
+                if (currentWave > 10) {
+                    showVictoryScreen();
+                } else {
+                    initializeWave();
+                }
+            }
+
+            animationFrameId = requestAnimationFrame(gameLoop);
+        }
+
+        // Funções auxiliares para melhorar a legibilidade e performance
+        function drawUI() {
             ctx.fillStyle = 'white';
             ctx.font = '20px Arial';
             ctx.fillText(`Vidas: ${player.lives}`, 10, 30);
             ctx.fillText(`Onda: ${currentWave}`, 10, 60);
-            if (boss.active) {
-                ctx.fillText(`Chefe HP: ${boss.health}/${boss.maxHealth}`, 10, 90);
+            
+            // Modificar esta parte para mostrar "Boss HP" na onda 10
+            if (currentWave === 10 && boss.active) {
+                ctx.fillText(`Boss HP: ${boss.health}`, 10, 90);
             } else {
                 ctx.fillText(`Inimigos: ${robots.length}`, 10, 90);
             }
-
-            // Removido o indicador de cooldown de tiro
-
-            if (keys.KeyX) {
-                if (!player.isCharging && !player.overheated) {
-                    player.isCharging = true;
-                    player.chargeTime = 0;
-                } else if (player.isCharging) {
-                    player.chargeTime = Math.min(player.chargeTime + deltaTime, player.maxChargeTime);
-                }
-            } else if (player.isCharging) {
-                fireBullet();
-            }
-
+            
             // Desenhar indicador de tiros carregados
             for (let i = 0; i < player.maxChargedShots; i++) {
                 ctx.fillStyle = i < player.chargedShots ? 'orange' : 'gray';
                 ctx.fillRect(10 + i * 20, 120, 15, 15);
-            }
-
-            // Ajustar o tamanho e a posição do texto de sobrecarga
-            if (player.overheated) {
-                ctx.fillStyle = 'red';
-                ctx.font = '14px Arial';
-                ctx.fillText('SOBRECARREGADO!', 10, 110);
             }
 
             // Desenhar indicador de dashes disponíveis
@@ -719,29 +820,36 @@
                 ctx.fillRect(10 + i * 20, 150, 15, 15);
             }
 
-            // Desenhar indicador de cansaço
+            if (player.overheated) {
+                ctx.fillStyle = 'red';
+                ctx.font = '14px Arial';
+                ctx.fillText('SOBRECARREGADO!', 10, 180);
+            }
+
             if (player.isTired) {
                 ctx.fillStyle = 'red';
                 ctx.font = '14px Arial';
-                ctx.fillText('CANSADO!', 10, 180);
+                ctx.fillText('CANSADO!', 10, 200);
             }
+        }
 
-            // Atualizar a animação de idle
-            player.idleAnimationTimer += deltaTime;
-            if (player.idleAnimationTimer > 200) { // Muda a cada 200ms
-                player.currentIdleFrame = (player.currentIdleFrame + 1) % player.idleFrames;
-                player.idleAnimationTimer = 0;
+        function handleCharging(deltaTime) {
+            if (keys.KeyX) {
+                if (!player.isCharging && !player.overheated) {
+                    player.isCharging = true;
+                    player.chargeTime = 0;
+                } else if (player.isCharging) {
+                    player.chargeTime = Math.min(player.chargeTime + deltaTime, player.maxChargeTime);
+                }
             }
+        }
 
-            // Verificar se o jogador está se movendo ou não
-            player.isIdle = !keys['ArrowLeft'] && !keys['ArrowRight'] && !keys['Space'] && !player.isDashing;
-
-            // Adicione esta verificação dentro do gameLoop
+        function handleDash(deltaTime) {
             if (player.isDashing) {
                 player.dashDuration -= deltaTime;
                 if (player.dashDuration <= 0) {
                     player.isDashing = false;
-                    player.dashDuration = 200; // Resetar a duração do dash
+                    player.dashDuration = 200;
                     player.dashesUsed++;
                     if (player.dashesUsed >= player.maxDashes) {
                         player.isTired = true;
@@ -754,28 +862,17 @@
                     setTimeout(() => { player.canDash = true; }, player.dashCooldown);
                 }
             }
-
-            if (gameState === 'playing') {
-                animationFrameId = requestAnimationFrame(gameLoop);
-            }
         }
 
         function checkCollision(obj1, obj2) {
-            if (obj1 === bullet) {
-                const dx = obj1.x - (obj2.x + obj2.width / 2);
-                const dy = obj1.y - (obj2.y + obj2.height / 2);
-                const distance = Math.sqrt(dx * dx + dy * dy);
-                return distance < obj1.radius + Math.max(obj2.width, obj2.height) / 2;
-            } else {
-                return obj1.x < obj2.x + obj2.width && obj1.x + obj1.width > obj2.x &&
-                       obj1.y < obj2.y + obj2.height && obj1.y + obj1.height > obj2.y;
-            }
+            return obj1.x < obj2.x + obj2.width && obj1.x + obj1.width > obj2.x &&
+                   obj1.y < obj2.y + obj2.height && obj1.y + obj1.height > obj2.y;
         }
 
         function reiniciarJogo(initialWave = 1) {
             player.x = GAME_WIDTH / 2;
             player.y = GAME_HEIGHT - 80;
-            player.lives = 3;
+            player.lives = 3; // Redefina as vidas para 3
             player.canShoot = true;
             player.direction = 1;
             bullet.isActive = false;
@@ -790,11 +887,7 @@
         function fireBullet() {
             if (player.canShoot && !player.overheated) {
                 bullet.isActive = true;
-                if (player.direction === 1) { // Jogador olhando para a direita
-                    bullet.x = player.x + player.width + bullet.radius;
-                } else { // Jogador olhando para a esquerda
-                    bullet.x = player.x - bullet.radius;
-                }
+                bullet.x = player.direction === 1 ? player.x + player.width + bullet.radius : player.x - bullet.radius;
                 bullet.y = player.y + player.height / 2;
                 bullet.direction = player.direction;
                 
@@ -802,14 +895,17 @@
                 bullet.damage = bullet.baseDamage + (bullet.maxDamage - bullet.baseDamage) * chargePercentage;
                 
                 bullet.speed = 10 + 10 * chargePercentage;
-                bullet.radius = 5 + 20 * chargePercentage; // Ajuste o tamanho máximo conforme necessário
+                bullet.radius = 5 + 20 * chargePercentage;
 
                 player.canShoot = false;
-                setTimeout(() => { player.canShoot = true; }, player.shootCooldown);
                 player.isCharging = false;
                 player.chargeTime = 0;
 
-                // Incrementar o contador de tiros carregados
+                // Use requestAnimationFrame para atrasar a recarga do tiro
+                requestAnimationFrame(() => {
+                    setTimeout(() => { player.canShoot = true; }, player.shootCooldown);
+                });
+
                 if (chargePercentage > 0.5) {
                     player.chargedShots++;
                     if (player.chargedShots >= player.maxChargedShots) {
@@ -856,105 +952,138 @@
 
         // Substitua a função drawPlayerSprite por esta nova versão
         function drawPlayerSprite(ctx, player) {
-            // Ajuste o tamanho do jogador para corresponder ao sprite
             const spriteRatio = player.sprite.width / player.sprite.height;
-            player.height = 33; // Altura um pouco maior que o sprite original para melhor visibilidade
+            player.height = 33;
             player.width = player.height * spriteRatio;
 
             ctx.save();
             ctx.translate(player.x, player.y);
-            if (player.direction === -1) {
+            if (player.direction === 1) {  // Invertemos esta condição
                 ctx.scale(-1, 1);
                 ctx.translate(-player.width, 0);
             }
 
-            if (player.isIdle && player.idleSpriteLoaded) {
-                const frameWidth = player.idleSprite.width / player.idleFrames;
-                const frameHeight = player.idleSprite.height;
-                ctx.drawImage(
-                    player.idleSprite,
-                    player.currentIdleFrame * frameWidth, 0,
-                    frameWidth, frameHeight,
-                    0, 0,
-                    player.width, player.height
-                );
-            } else if (player.spriteLoaded) {
+            if (player.spriteLoaded) {
                 ctx.drawImage(player.sprite, 0, 0, player.sprite.width, player.sprite.height, 0, 0, player.width, player.height);
             } else {
-                // Desenhe um retângulo colorido como fallback se nenhum sprite estiver carregado
                 ctx.fillStyle = 'red';
                 ctx.fillRect(0, 0, player.width, player.height);
             }
 
             ctx.restore();
-
-            // Adicione um contorno para tornar o jogador mais visível
-            ctx.strokeStyle = 'white';
-            ctx.lineWidth = 1;
-            ctx.strokeRect(player.x, player.y, player.width, player.height);
-
-            console.log("Desenhando jogador em:", player.x, player.y, "Tamanho:", player.width, player.height);
         }
 
-        // Adicione um evento para pausar o jogo
-        document.addEventListener('keydown', (e) => {
-            if (e.code === 'Escape' && gameState === 'playing') {
-                gameState = 'menu';
-                showMenu();
-            }
-        });
-
-        // Adicione um listener de redimensionamento e chame resizeCanvas no início
-        window.addEventListener('resize', resizeCanvas);
-        resizeCanvas();
-
-        // Inicialize o jogo no estado de menu
-        showMenu();
-
-        function showVictoryScreen() {
-            cancelAnimationFrame(animationFrameId); // Para o loop do jogo
-            
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
-            ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
-            
-            ctx.fillStyle = 'gold';
-            ctx.font = 'bold 48px Arial';
-            ctx.textAlign = 'center';
-            ctx.fillText('Parabéns! Você venceu o jogo!', GAME_WIDTH / 2, GAME_HEIGHT / 2 - 50);
-            
-            ctx.fillStyle = 'white';
-            ctx.font = '24px Arial';
-            ctx.fillText('Você derrotou o chefe final e salvou o mundo!', GAME_WIDTH / 2, GAME_HEIGHT / 2 + 20);
-            
-            ctx.fillStyle = 'lightblue';
-            ctx.fillText('Pressione ENTER para jogar novamente', GAME_WIDTH / 2, GAME_HEIGHT / 2 + 70);
-            
-            document.addEventListener('keydown', restartGameOnEnter);
+        function checkCollision(obj1, obj2) {
+            return obj1.x < obj2.x + obj2.width && obj1.x + obj1.width > obj2.x &&
+                   obj1.y < obj2.y + obj2.height && obj1.y + obj1.height > obj2.y;
         }
 
-        function restartGameOnEnter(e) {
-            if (e.code === 'Enter' && gameState === 'victory') {
-                document.removeEventListener('keydown', restartGameOnEnter);
-                reiniciarJogo();
-                gameState = 'playing';
-                animationFrameId = requestAnimationFrame(gameLoop);
+        function respawnPlayer() {
+            player.x = GAME_WIDTH / 2;
+            player.y = ground.y - player.height;
+            player.verticalVelocity = 0;
+        }
+
+        function attackPlayer() {
+            if (checkCollision(player, {x: boss.x - boss.attackRange/2, y: boss.y, width: boss.width + boss.attackRange, height: boss.height})) {
+                player.lives--;
+                if (player.lives <= 0) {
+                    gameOver();
+                } else {
+                    respawnPlayer();
+                }
             }
         }
 
-        function gameOver() {
-            gameState = 'menu';
-            cancelAnimationFrame(animationFrameId);
-            showMenu();
-            alert("Game Over! Você perdeu todas as suas vidas.");
+        // Adicione esta nova função para verificar a colisão da bala
+        function checkBulletCollision(bullet, target) {
+            const bulletCenterX = bullet.x;
+            const bulletCenterY = bullet.y;
+            const targetCenterX = target.x + target.width / 2;
+            const targetCenterY = target.y + target.height / 2;
+
+            const distanceX = Math.abs(bulletCenterX - targetCenterX);
+            const distanceY = Math.abs(bulletCenterY - targetCenterY);
+
+            if (distanceX > (target.width / 2 + bullet.radius)) { return false; }
+            if (distanceY > (target.height / 2 + bullet.radius)) { return false; }
+
+            if (distanceX <= (target.width / 2)) { return true; }
+            if (distanceY <= (target.height / 2)) { return true; }
+
+            const cornerDistance = Math.pow(distanceX - target.width / 2, 2) +
+                                   Math.pow(distanceY - target.height / 2, 2);
+
+            return (cornerDistance <= Math.pow(bullet.radius, 2));
         }
 
-        // Adicione este código no início do seu script para garantir que o canvas seja configurado corretamente
-        window.onload = function() {
-            canvas.width = GAME_WIDTH;
-            canvas.height = GAME_HEIGHT;
-            console.log("Canvas configurado com dimensões:", canvas.width, canvas.height);
-            gameLoop();
+        // Adicionar após as declarações iniciais (junto com player, bullet, etc.)
+        const healthPowerUp = {
+            x: 0,
+            y: 0,
+            width: 20,
+            height: 20,
+            active: false,
+            healAmount: 1,
+            respawnTime: 15000, // 15 segundos
+            lastSpawnTime: 0
         };
+
+        // Adicionar após as outras funções de desenho
+        function drawHealthPowerUp(ctx) {
+            if (!healthPowerUp.active) return;
+            
+            ctx.save();
+            // Desenhar o power-up como uma cruz verde
+            ctx.fillStyle = '#00ff00'; // Verde brilhante
+            
+            // Desenhar a parte vertical da cruz
+            const crossThickness = healthPowerUp.width * 0.3;
+            const x = healthPowerUp.x;
+            const y = healthPowerUp.y;
+            const w = healthPowerUp.width;
+            const h = healthPowerUp.height;
+            
+            // Parte vertical da cruz
+            ctx.fillRect(
+                x + (w - crossThickness) / 2,
+                y,
+                crossThickness,
+                h
+            );
+            
+            // Parte horizontal da cruz
+            ctx.fillRect(
+                x,
+                y + (h - crossThickness) / 2,
+                w,
+                crossThickness
+            );
+            
+            // Adicionar um contorno branco
+            ctx.strokeStyle = 'white';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(x, y, w, h);
+            
+            ctx.restore();
+        }
+
+        // Adicionar função para spawnar power-up
+        function spawnHealthPowerUp() {
+            if (!healthPowerUp.active && Date.now() - healthPowerUp.lastSpawnTime > healthPowerUp.respawnTime) {
+                const availablePlatforms = platforms.filter(p => 
+                    !robots.some(r => checkCollision(r, p)) && 
+                    (!boss || !checkCollision(boss, p))
+                );
+                
+                if (availablePlatforms.length > 0) {
+                    const platform = availablePlatforms[Math.floor(Math.random() * availablePlatforms.length)];
+                    healthPowerUp.active = true;
+                    healthPowerUp.x = platform.x + (platform.width - healthPowerUp.width) / 2;
+                    healthPowerUp.y = platform.y - healthPowerUp.height;
+                }
+            }
+        }
 
     </script>
 </body>
