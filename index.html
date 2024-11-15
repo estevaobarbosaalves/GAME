@@ -4,11 +4,22 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Robots Frenzy</title>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
     <style>
         body { margin: 0; overflow: hidden; display: flex; justify-content: center; align-items: center; height: 100vh; background: black; }
-        canvas { border: 1px solid white; }
-        #gameMenu { position: absolute; background: rgba(0,0,0,0.8); color: white; padding: 20px; text-align: center; }
-        #gameMenu button { display: block; width: 200px; padding: 10px; margin: 10px auto; font-size: 18px; cursor: pointer; }
+        canvas { border: none; }
+        #gameMenu { position: absolute; background: rgba(0,0,0,0.8); color: white; padding: 20px; text-align: center; font-family: 'Press Start 2P', cursive; }
+        #gameMenu h1 { font-size: 24px; margin-bottom: 30px; text-shadow: 2px 2px #000; }
+        #gameMenu button { display: block; width: 200px; padding: 10px; margin: 10px auto; font-size: 16px; cursor: pointer; font-family: 'Press Start 2P', cursive; background: #333; color: white; border: 2px solid #666; text-transform: uppercase; }
+        #gameMenu button:hover { background: #444; border-color: #888; }
+        #gameMenu ul { font-size: 12px; line-height: 1.6; text-align: left; margin: 20px 0; padding-left: 20px; }
+        #gameMenu p { font-size: 12px; line-height: 1.6; margin: 20px 0; }
+        * {
+            font-family: 'Press Start 2P', cursive;
+        }
+        canvas {
+            font-family: 'Press Start 2P', cursive;
+        }
     </style>
 </head>
 <body>
@@ -31,6 +42,46 @@
         let konamiCode = ['ArrowUp', 'ArrowUp', 'ArrowDown', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ArrowLeft', 'ArrowRight', 'KeyB', 'KeyA'];
         let konamiIndex = 0;
         let easterEggActivated = false;
+
+        // Adicione esta variável global junto com as outras no início do script
+        const strongRobotSprite = new Image();
+        strongRobotSprite.src = 'Medium robot.png';
+        let strongRobotSpriteLoaded = false;
+
+        strongRobotSprite.onload = function() {
+            strongRobotSpriteLoaded = true;
+            console.log("Sprite do robô forte carregado com sucesso");
+        };
+
+        // Adicione estas variáveis globais junto com as outras no início do script
+        const weakRobotSprite = new Image();
+        weakRobotSprite.src = 'pixilart-drawing.png';
+        let weakRobotSpriteLoaded = false;
+
+        weakRobotSprite.onload = function() {
+            weakRobotSpriteLoaded = true;
+            console.log("Sprite do robô fraco carregado com sucesso");
+        };
+
+        // Adicione esta variável global junto com as outras no início do script
+        const zectromSprite = new Image();
+        zectromSprite.src = 'ZECTROM].png';
+        let zectromSpriteLoaded = false;
+
+        zectromSprite.onload = function() {
+            zectromSpriteLoaded = true;
+            console.log("Sprite do Zectrom carregado com sucesso");
+        };
+
+        // Adicione esta variável global junto com as outras no início do script
+        const backgroundImage = new Image();
+        backgroundImage.src = 'Cenario.png';
+        let backgroundLoaded = false;
+
+        backgroundImage.onload = function() {
+            backgroundLoaded = true;
+            console.log("Imagem de fundo carregada com sucesso");
+        };
 
         // Adicione esta função para verificar o código Konami
         function checkKonamiCode(e) {
@@ -106,8 +157,8 @@
             
             // Ajustar o tamanho do chefe, se existir
             if (boss) {
-                boss.width = GAME_WIDTH * 0.03; // 3% da largura do jogo
-                boss.height = GAME_HEIGHT * 0.08; // 8% da altura do jogo
+                boss.width = GAME_WIDTH * 0.06;  // Aumentado de 0.03 para 0.06 (6% da largura do jogo)
+                boss.height = GAME_HEIGHT * 0.16; // Aumentado de 0.08 para 0.16 (16% da altura do jogo)
             }
             
             // Reduzir a força do dash
@@ -141,7 +192,12 @@
             idleFrames: 6,
             currentIdleFrame: 0,
             idleAnimationTimer: 0,
-            isIdle: true
+            isIdle: true,
+            hasUltimate: true,
+            ultimateCooldown: 30000, // Aumentado para 30 segundos
+            lastUltimateTime: 0,
+            isUsingUltimate: false,
+            ultimateDuration: 1000, // Duração do laser: 1 segundo
         };
 
         player.sprite.onload = function() {
@@ -189,9 +245,9 @@
         // Adicione esta nova constante para o chefe
         const boss = {
             x: GAME_WIDTH / 2,
-            y: ground.y - 120, // Um pouco maior que os robôs normais
-            width: 60,
-            height: 120,
+            y: ground.y - 180,  // Aumentado de 120 para 180
+            width: 120,         // Aumentado de 60 para 120
+            height: 180,        // Aumentado de 120 para 180
             speed: 4,
             jumpStrength: 20,
             health: 300,
@@ -249,25 +305,30 @@
             const projectile = {
                 x: boss.x + boss.width / 2,
                 y: boss.y + boss.height / 2,
-                radius: 8,
+                radius: 12,
                 speed: 8,
                 direction: boss.direction
             };
             boss.projectiles.push(projectile);
         }
 
-        // Modifique a função createRobot para incluir uma propriedade de animação
+        // Modifique a função createRobot para aumentar o tamanho dos robôs fortes
         function createRobot(isStrong) {
             const baseHealth = isStrong ? 50 : 20;
             const health = baseHealth + (isStrong ? (currentWave - 1) * 10 : 0);
             return {
                 x: Math.random() < 0.5 ? -30 : GAME_WIDTH,
-                y: ground.y - (isStrong ? 60 : 40),
-                width: isStrong ? 40 : 30, height: isStrong ? 60 : 40,
-                speed: isStrong ? 2 : 1, jumpStrength: isStrong ? 20 : 18,
-                health: health, maxHealth: health, isStrong: isStrong,
+                y: ground.y - (isStrong ? 120 : 60),  // Ajustado para robôs fracos
+                width: isStrong ? 100 : 50,           // Ajustado para robôs fracos
+                height: isStrong ? 120 : 60,          // Ajustado para robôs fracos
+                speed: isStrong ? 2 : 1,
+                jumpStrength: isStrong ? 20 : 18,
+                health: health,
+                maxHealth: health,
+                isStrong: isStrong,
                 color: isStrong ? 'red' : 'orange',
-                verticalVelocity: 0, direction: 1
+                verticalVelocity: 0,
+                direction: 1
             };
         }
 
@@ -554,33 +615,22 @@
         showMenu();
 
         function showVictoryScreen() {
-            cancelAnimationFrame(animationFrameId); // Para o loop do jogo
+            cancelAnimationFrame(animationFrameId);
             
             ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
             ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
             
             ctx.fillStyle = 'gold';
-            ctx.font = 'bold 48px Arial';
+            ctx.font = '48px "Press Start 2P"';
             ctx.textAlign = 'center';
-            ctx.fillText('Parabéns! Você venceu o jogo!', GAME_WIDTH / 2, GAME_HEIGHT / 2 - 50);
+            ctx.fillText('Parabéns!', GAME_WIDTH / 2, GAME_HEIGHT / 2 - 120);
             
             ctx.fillStyle = 'white';
-            ctx.font = '24px Arial';
-            ctx.fillText('Você derrotou o chefe final e salvou o mundo!', GAME_WIDTH / 2, GAME_HEIGHT / 2 + 20);
-            
-            ctx.fillStyle = 'lightblue';
-            ctx.fillText('Pressione ENTER para jogar novamente', GAME_WIDTH / 2, GAME_HEIGHT / 2 + 70);
-            
-            document.addEventListener('keydown', restartGameOnEnter);
-        }
-
-        function restartGameOnEnter(e) {
-            if (e.code === 'Enter' && gameState === 'victory') {
-                document.removeEventListener('keydown', restartGameOnEnter);
-                reiniciarJogo();
-                gameState = 'playing';
-                animationFrameId = requestAnimationFrame(gameLoop);
-            }
+            ctx.font = '24px "Press Start 2P"';
+            ctx.fillText('Você derrotou Zectrom,', GAME_WIDTH / 2, GAME_HEIGHT / 2 - 40);
+            ctx.fillText('tirando a frenesia dos robôs', GAME_WIDTH / 2, GAME_HEIGHT / 2);
+            ctx.fillText('e os desinfectando.', GAME_WIDTH / 2, GAME_HEIGHT / 2 + 40);
+            ctx.fillText('VOCÊ SALVOU O MUNDO!', GAME_WIDTH / 2, GAME_HEIGHT / 2 + 80);
         }
 
         function gameOver() {
@@ -599,20 +649,39 @@
             gameLoop();
         };
 
-        // Substitua a função drawRobotSprite por esta versão simplificada
+        // Modifique a função drawRobot para usar os sprites
         function drawRobot(ctx, robot) {
             ctx.save();
             ctx.translate(robot.x, robot.y);
             
-            // Desenhar o corpo do robô
-            ctx.fillStyle = robot.isStrong ? 'red' : 'orange';
-            ctx.fillRect(0, 0, robot.width, robot.height);
+            // Determinar a direção do robô baseado na posição do jogador
+            robot.direction = robot.x < player.x ? 1 : -1;
             
-            // Desenhar os "olhos" do robô
-            ctx.fillStyle = 'white';
-            const eyeSize = robot.width * 0.2;
-            ctx.fillRect(robot.width * 0.2, robot.height * 0.2, eyeSize, eyeSize);
-            ctx.fillRect(robot.width * 0.6, robot.height * 0.2, eyeSize, eyeSize);
+            if (robot.isStrong && strongRobotSpriteLoaded) {
+                // Desenhar o sprite do robô forte
+                if (robot.direction === -1) {  // Invertido a condição
+                    ctx.scale(-1, 1);
+                    ctx.translate(-robot.width, 0);
+                }
+                ctx.drawImage(strongRobotSprite, 0, 0, robot.width, robot.height);
+            } else if (!robot.isStrong && weakRobotSpriteLoaded) {
+                // Desenhar o sprite do robô fraco
+                if (robot.direction === -1) {  // Invertido a condição
+                    ctx.scale(-1, 1);
+                    ctx.translate(-robot.width, 0);
+                }
+                ctx.drawImage(weakRobotSprite, 0, 0, robot.width, robot.height);
+            } else {
+                // Fallback para quando os sprites não estiverem carregados
+                ctx.fillStyle = robot.isStrong ? 'red' : 'orange';
+                ctx.fillRect(0, 0, robot.width, robot.height);
+                
+                // Desenhar os "olhos" do robô
+                ctx.fillStyle = 'white';
+                const eyeSize = robot.width * 0.2;
+                ctx.fillRect(robot.width * 0.2, robot.height * 0.2, eyeSize, eyeSize);
+                ctx.fillRect(robot.width * 0.6, robot.height * 0.2, eyeSize, eyeSize);
+            }
             
             // Desenhar barra de vida do robô
             const healthBarWidth = robot.width;
@@ -638,8 +707,16 @@
             lastTime = currentTime;
 
             ctx.clearRect(0, 0, canvas.width, canvas.height);
-            ctx.fillStyle = 'skyblue';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Desenhar o background
+            if (backgroundLoaded) {
+                // Desenhar a imagem de fundo cobrindo todo o canvas
+                ctx.drawImage(backgroundImage, 0, 0, GAME_WIDTH, GAME_HEIGHT);
+            } else {
+                // Fallback para cor sólida caso a imagem não carregue
+                ctx.fillStyle = 'black';
+                ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+            }
 
             // Calcular a posição da câmera
             const cameraX = Math.max(0, Math.min(player.x - canvas.width / 2, GAME_WIDTH - canvas.width));
@@ -648,16 +725,14 @@
             ctx.translate(-cameraX, 0);
 
             // Desenhar plataformas
-            ctx.fillStyle = 'gray';
             for (let platform of platforms) {
                 if (platform.x + platform.width > cameraX && platform.x < cameraX + canvas.width) {
-                    ctx.fillRect(platform.x, platform.y, platform.width, platform.height);
+                    drawNoisyPlatform(ctx, platform.x, platform.y, platform.width, platform.height);
                 }
             }
 
             // Desenhar chão
-            ctx.fillStyle = 'gray';
-            ctx.fillRect(cameraX, ground.y, canvas.width, ground.height);
+            drawNoisyGround(ctx, cameraX, ground.y, canvas.width, ground.height);
 
             // Atualizar e desenhar jogador
             moveObject(player);
@@ -720,14 +795,15 @@
                 updateBossProjectiles();
                 
                 // Desenhar o boss
-                ctx.fillStyle = boss.color;
-                ctx.fillRect(boss.x, boss.y, boss.width, boss.height);
+                drawBoss(ctx);
                 
-                // Adicionar o nome "Zectrom" acima do boss
-                ctx.fillStyle = 'white';
-                ctx.font = 'bold 24px Arial';
-                ctx.textAlign = 'center';
-                ctx.fillText('Zectrom', boss.x + boss.width / 2, boss.y - 60);
+                // Desenhar nome "Zectrom" acima do boss na wave 10
+                if (currentWave === 10) {
+                    ctx.fillStyle = 'white';
+                    ctx.font = '24px "Press Start 2P"';
+                    ctx.textAlign = 'center';
+                    ctx.fillText('Zectrom', boss.width / 2, -30);
+                }
                 
                 // Desenhar projéteis do boss
                 boss.projectiles.forEach(proj => {
@@ -736,17 +812,6 @@
                     ctx.fillStyle = '#ff4444';
                     ctx.fill();
                 });
-                
-                // Desenhar barra de vida do boss
-                const healthBarWidth = 200;
-                const healthBarHeight = 20;
-                const healthPercentage = boss.health / boss.maxHealth;
-                const barX = boss.x + (boss.width / 2) - (healthBarWidth / 2);
-                
-                ctx.fillStyle = 'red';
-                ctx.fillRect(barX, boss.y - 40, healthBarWidth, healthBarHeight);
-                ctx.fillStyle = 'green';
-                ctx.fillRect(barX, boss.y - 40, healthBarWidth * healthPercentage, healthBarHeight);
                 
                 // Verificar colisão com o jogador
                 if (checkCollision(player, boss)) {
@@ -797,6 +862,10 @@
                 }
             }
 
+            if (player.isUsingUltimate) {
+                updateUltimate();
+            }
+
             animationFrameId = requestAnimationFrame(gameLoop);
         }
 
@@ -836,6 +905,21 @@
                 ctx.fillStyle = 'red';
                 ctx.font = '14px Arial';
                 ctx.fillText('CANSADO!', 10, 200);
+            }
+
+            // Indicador do ultimate
+            const ultimateReady = Date.now() - player.lastUltimateTime >= player.ultimateCooldown;
+            ctx.fillStyle = ultimateReady ? 'gold' : 'gray';
+            ctx.font = '16px "Press Start 2P"';
+            ctx.fillText('ULTIMATE (U)', 10, 230);
+            
+            // Barra de cooldown do ultimate
+            if (!ultimateReady) {
+                const cooldownProgress = (Date.now() - player.lastUltimateTime) / player.ultimateCooldown;
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+                ctx.fillRect(10, 240, 100, 10);
+                ctx.fillStyle = 'gold';
+                ctx.fillRect(10, 240, 100 * cooldownProgress, 10);
             }
         }
 
@@ -941,6 +1025,9 @@
                     player.isDashing = true;
                     player.canDash = false;
                 }
+            }
+            if (e.code === 'KeyU') {
+                fireUltimate();
             }
         });
 
@@ -1066,8 +1153,8 @@
                 crossThickness
             );
             
-            // Adicionar um contorno branco
-            ctx.strokeStyle = 'white';
+            // Adicionar um contorno preto
+            ctx.strokeStyle = 'black'; // Alterado de 'white' para 'black'
             ctx.lineWidth = 2;
             ctx.strokeRect(x, y, w, h);
             
@@ -1087,6 +1174,213 @@
                     healthPowerUp.active = true;
                     healthPowerUp.x = platform.x + (platform.width - healthPowerUp.width) / 2;
                     healthPowerUp.y = platform.y - healthPowerUp.height;
+                }
+            }
+        }
+
+        // Modifique a função que desenha o boss
+        function drawBoss(ctx) {
+            if (!boss.active) return;
+            
+            ctx.save();
+            ctx.translate(boss.x, boss.y);
+            
+            // Determinar direção do boss baseado na posição do jogador
+            boss.direction = boss.x < player.x ? 1 : -1;
+            
+            if (currentWave === 10 && zectromSpriteLoaded) {
+                // Desenhar o sprite do Zectrom
+                if (boss.direction === -1) {
+                    ctx.scale(-1, 1);
+                    ctx.translate(-boss.width, 0);
+                }
+                ctx.drawImage(zectromSprite, 0, 0, boss.width, boss.height);
+            } else {
+                // Fallback ou outros bosses
+                ctx.fillStyle = boss.color;
+                ctx.fillRect(0, 0, boss.width, boss.height);
+            }
+            
+            // Desenhar barra de vida
+            const healthBarWidth = boss.width;
+            const healthBarHeight = 10;
+            const healthPercentage = boss.health / boss.maxHealth;
+            
+            ctx.fillStyle = 'red';
+            ctx.fillRect(0, -20, healthBarWidth, healthBarHeight);
+            ctx.fillStyle = 'green';
+            ctx.fillRect(0, -20, healthBarWidth * healthPercentage, healthBarHeight);
+            
+            ctx.restore();
+            
+            // Desenhar nome "Zectrom" acima do boss na wave 10 (após o restore)
+            if (currentWave === 10) {
+                ctx.fillStyle = 'white';
+                ctx.font = '24px "Press Start 2P"';
+                ctx.textAlign = 'center';
+                ctx.fillText('Zectrom', boss.x + boss.width / 2, boss.y - 30);
+            }
+            
+            // Desenhar projéteis do boss
+            boss.projectiles.forEach(proj => {
+                ctx.beginPath();
+                ctx.arc(proj.x, proj.y, proj.radius, 0, Math.PI * 2);
+                ctx.fillStyle = '#ff4444';
+                ctx.fill();
+            });
+        }
+
+        // Adicione esta função para gerar o padrão de ruído para o chão
+        function drawNoisyGround(ctx, x, y, width, height) {
+            ctx.save();
+            
+            // Cor base do chão - mais escura
+            ctx.fillStyle = '#202020';  // Alterado de #404040 para #202020
+            ctx.fillRect(x, y, width, height);
+            
+            // Adicionar padrão de ruído com cores mais escuras
+            for (let i = 0; i < width; i += 4) {
+                for (let j = 0; j < height; j += 4) {
+                    if (Math.random() < 0.3) {  // 30% de chance de desenhar um pixel de ruído
+                        ctx.fillStyle = Math.random() < 0.5 ? '#151515' : '#252525';  // Cores mais escuras
+                        ctx.fillRect(x + i, y + j, 4, 4);
+                    }
+                }
+            }
+            
+            // Adicionar linhas horizontais mais escuras para textura
+            ctx.strokeStyle = '#181818';  // Alterado de #353535 para #181818
+            ctx.lineWidth = 1;
+            for (let i = 0; i < height; i += 8) {
+                ctx.beginPath();
+                ctx.moveTo(x, y + i);
+                ctx.lineTo(x + width, y + i);
+                ctx.stroke();
+            }
+            
+            ctx.restore();
+        }
+
+        // Adicionar função para desenhar plataformas com ruído
+        function drawNoisyPlatform(ctx, x, y, width, height) {
+            ctx.save();
+            
+            // Cor base da plataforma - mesma do chão
+            ctx.fillStyle = '#202020';
+            ctx.fillRect(x, y, width, height);
+            
+            // Adicionar padrão de ruído com cores mais escuras
+            for (let i = 0; i < width; i += 4) {
+                for (let j = 0; j < height; j += 4) {
+                    if (Math.random() < 0.3) {
+                        ctx.fillStyle = Math.random() < 0.5 ? '#151515' : '#252525';
+                        ctx.fillRect(x + i, y + j, 4, 4);
+                    }
+                }
+            }
+            
+            // Adicionar linhas horizontais mais escuras para textura
+            ctx.strokeStyle = '#181818';
+            ctx.lineWidth = 1;
+            for (let i = 0; i < height; i += 8) {
+                ctx.beginPath();
+                ctx.moveTo(x, y + i);
+                ctx.lineTo(x + width, y + i);
+                ctx.stroke();
+            }
+            
+            ctx.restore();
+        }
+
+        // Adicione esta nova função para o ataque ultimate
+        function fireUltimate() {
+            const currentTime = Date.now();
+            if (player.hasUltimate && currentTime - player.lastUltimateTime >= player.ultimateCooldown) {
+                player.isUsingUltimate = true;
+                player.lastUltimateTime = currentTime;
+                
+                // Sobrecarregar o jogador
+                player.overheated = true;
+                player.chargedShots = 0;
+                
+                // Efeito visual de flash
+                ctx.save();
+                ctx.fillStyle = 'rgba(255, 255, 0, 0.2)';
+                ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+                ctx.restore();
+                
+                // Timer para desativar o ultimate
+                setTimeout(() => {
+                    player.isUsingUltimate = false;
+                }, player.ultimateDuration);
+                
+                // Timer para recuperar do sobreaquecimento
+                setTimeout(() => {
+                    player.overheated = false;
+                }, player.overheatCooldown);
+            }
+        }
+
+        // Adicione esta função no gameLoop para desenhar e aplicar dano do laser
+        function updateUltimate() {
+            if (player.isUsingUltimate) {
+                // Desenhar o laser
+                ctx.save();
+                
+                // Gradiente para o laser
+                const gradient = ctx.createLinearGradient(
+                    player.x + player.width/2,
+                    player.y + player.height/2,
+                    player.x + player.width/2 + (player.direction * GAME_WIDTH),
+                    player.y + player.height/2
+                );
+                gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
+                gradient.addColorStop(0.5, 'rgba(255, 255, 0, 0.8)');
+                gradient.addColorStop(1, 'rgba(255, 0, 0, 0.6)');
+                
+                // Linha principal do laser - reduzida de 30 para 15
+                ctx.beginPath();
+                ctx.lineWidth = 15;
+                ctx.strokeStyle = gradient;
+                ctx.moveTo(player.x + player.width/2, player.y + player.height/2);
+                ctx.lineTo(
+                    player.x + player.width/2 + (player.direction * GAME_WIDTH),
+                    player.y + player.height/2
+                );
+                ctx.stroke();
+                
+                // Efeito de brilho - reduzido de 15 para 8
+                ctx.lineWidth = 8;
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+                ctx.stroke();
+                
+                ctx.restore();
+                
+                // Verificar colisões e aplicar dano
+                robots.forEach((robot, index) => {
+                    if (robot.y + robot.height > player.y && 
+                        robot.y < player.y + player.height &&
+                        ((player.direction === 1 && robot.x > player.x) ||
+                         (player.direction === -1 && robot.x < player.x))) {
+                        robot.health -= 100 * (16/1000); // 100 de dano por segundo (ajustado para frames)
+                        if (robot.health <= 0) {
+                            robots.splice(index, 1);
+                            enemiesDefeated++;
+                        }
+                    }
+                });
+                
+                // Verificar colisão com o boss
+                if (boss.active && 
+                    boss.y + boss.height > player.y && 
+                    boss.y < player.y + player.height &&
+                    ((player.direction === 1 && boss.x > player.x) ||
+                     (player.direction === -1 && boss.x < player.x))) {
+                    boss.health -= 100 * (16/1000); // 100 de dano por segundo
+                    if (boss.health <= 0) {
+                        boss.active = false;
+                        showVictoryScreen();
+                    }
                 }
             }
         }
