@@ -162,7 +162,8 @@
             }
             
             // Reduzir a força do dash
-            player.dashSpeed = GAME_WIDTH * 0.004; // Reduzido de 0.008 para 0.004 (0.4% da largura do jogo por frame)
+            player.dashSpeed = GAME_WIDTH * 0.008
+        ; // Reduzido de 0.008 para 0.004 (0.4% da largura do jogo por frame)
         }
 
         const player = {
@@ -1262,22 +1263,22 @@
         function drawNoisyPlatform(ctx, x, y, width, height) {
             ctx.save();
             
-            // Cor base da plataforma - mesma do chão
-            ctx.fillStyle = '#202020';
+            // Cor base da plataforma - vermelho escuro/marrom
+            ctx.fillStyle = '#441111'; // Cor base marrom avermelhado escuro
             ctx.fillRect(x, y, width, height);
             
-            // Adicionar padrão de ruído com cores mais escuras
+            // Adicionar padrão de ruído com variações da cor base
             for (let i = 0; i < width; i += 4) {
                 for (let j = 0; j < height; j += 4) {
                     if (Math.random() < 0.3) {
-                        ctx.fillStyle = Math.random() < 0.5 ? '#151515' : '#252525';
+                        ctx.fillStyle = Math.random() < 0.5 ? '#3a0e0e' : '#4d1414'; // Variações mais escuras e mais claras
                         ctx.fillRect(x + i, y + j, 4, 4);
                     }
                 }
             }
             
             // Adicionar linhas horizontais mais escuras para textura
-            ctx.strokeStyle = '#181818';
+            ctx.strokeStyle = '#330808'; // Linhas um pouco mais escuras
             ctx.lineWidth = 1;
             for (let i = 0; i < height; i += 8) {
                 ctx.beginPath();
