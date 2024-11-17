@@ -75,7 +75,7 @@
 
         // Adicione esta variável global junto com as outras no início do script
         const backgroundImage = new Image();
-        backgroundImage.src = 'Cenario.png';
+        backgroundImage.src = 'Imagem do WhatsApp de 2024-11-17 à(s) 20.10.39_1ba98198.jpg';
         let backgroundLoaded = false;
 
         backgroundImage.onload = function() {
@@ -125,7 +125,7 @@
             const spriteRatio = 7 / 11;
             player.height = GAME_HEIGHT * 0.15; // 15% da altura do jogo
             player.width = player.height * spriteRatio;
-            player.speed = GAME_WIDTH * 0.004; // Aumentado para manter a jogabilidade proporcional
+            player.speed = GAME_WIDTH * 0.002; // Reduzido de 0.004 para 0.002
             player.jumpStrength = GAME_HEIGHT * 0.025;
             
             // Ajustar a posição inicial do jogador para que fique no chão
@@ -147,11 +147,11 @@
             // Ajustar o tamanho dos robôs
             robots.forEach(robot => {
                 if (robot.isStrong) {
-                    robot.width = GAME_WIDTH * 0.02; // 2% da largura do jogo
-                    robot.height = GAME_HEIGHT * 0.05; // 5% da altura do jogo
+                    robot.width = GAME_WIDTH * 0.03;  // Aumentado de 0.02 para 0.03
+                    robot.height = GAME_HEIGHT * 0.07; // Aumentado de 0.05 para 0.07
                 } else {
-                    robot.width = GAME_WIDTH * 0.015; // 1.5% da largura do jogo
-                    robot.height = GAME_HEIGHT * 0.04; // 4% da altura do jogo
+                    robot.width = GAME_WIDTH * 0.015;
+                    robot.height = GAME_HEIGHT * 0.04;
                 }
             });
             
@@ -162,12 +162,12 @@
             }
             
             // Reduzir a força do dash
-            player.dashSpeed = GAME_WIDTH * 0.008; // Reduzido de 0.015 para 0.008 (0.8% da largura do jogo por frame)
+            player.dashSpeed = GAME_WIDTH * 0.004; // Reduzido de 0.008 para 0.004 (0.4% da largura do jogo por frame)
         }
 
         const player = {
             x: GAME_WIDTH / 2, y: GAME_HEIGHT - 80, width: 30, height: 50, // Aumentei a altura
-            speed: 5, jumpStrength: 20,
+            speed: 3, jumpStrength: 20,
             verticalVelocity: 0, lives: 3,
             canShoot: true, shootCooldown: 500, direction: 1,
             charging: false, chargeTime: 0, maxChargeTime: 1000,
@@ -178,7 +178,7 @@
             overheatCooldown: 3000,
             canDash: true,
             isDashing: false,
-            dashSpeed: 15,
+            dashSpeed: 8,
             dashDuration: 200,
             dashCooldown: 1000,
             maxDashes: 3,
@@ -248,24 +248,24 @@
             y: ground.y - 180,  // Aumentado de 120 para 180
             width: 120,         // Aumentado de 60 para 120
             height: 180,        // Aumentado de 120 para 180
-            speed: 4,
-            jumpStrength: 20,
+            speed: 2,           // Reduzido de 4 para 2
+            jumpStrength: 15,   // Reduzido de 20 para 15
             health: 300,
             maxHealth: 300,
             verticalVelocity: 0,
             direction: 1,
             color: '#800080', // Roxo escuro
             active: false,
-            attackCooldown: 1500,
+            attackCooldown: 2000,  // Aumentado de 1500 para 2000
             lastAttackTime: 0,
             projectiles: [], // Array para guardar os projéteis do boss
             attackPatterns: ['shoot', 'dash', 'jump'],
             currentPattern: 0,
             patternTimer: 0,
             isDashing: false,
-            dashSpeed: 12,
-            dashDuration: 500,
-            dashCooldown: 2000,
+            dashSpeed: 6,       // Reduzido de 12 para 6
+            dashDuration: 800,     // Aumentado de 500 para 800
+            dashCooldown: 3000,    // Aumentado de 2000 para 3000
             lastDashTime: 0
         };
 
@@ -318,9 +318,9 @@
             const health = baseHealth + (isStrong ? (currentWave - 1) * 10 : 0);
             return {
                 x: Math.random() < 0.5 ? -30 : GAME_WIDTH,
-                y: ground.y - (isStrong ? 120 : 60),  // Ajustado para robôs fracos
-                width: isStrong ? 100 : 50,           // Ajustado para robôs fracos
-                height: isStrong ? 120 : 60,          // Ajustado para robôs fracos
+                y: ground.y - (isStrong ? 150 : 60),  // Aumentado de 120 para 150
+                width: isStrong ? 130 : 50,           // Aumentado de 100 para 130
+                height: isStrong ? 150 : 60,          // Aumentado de 120 para 150
                 speed: isStrong ? 2 : 1,
                 jumpStrength: isStrong ? 20 : 18,
                 health: health,
@@ -345,9 +345,9 @@
             } else if (obj === boss) {
                 const currentTime = Date.now();
                 
-                // Atualizar padrão de ataque
-                boss.patternTimer += 16; // Aproximadamente 1 frame
-                if (boss.patternTimer >= 3000) { // Trocar padrão a cada 3 segundos
+                // Atualizar padrão de ataque mais lentamente
+                boss.patternTimer += 12; // Reduzido de 16 para 12
+                if (boss.patternTimer >= 4000) { // Aumentado de 3000 para 4000
                     boss.currentPattern = (boss.currentPattern + 1) % boss.attackPatterns.length;
                     boss.patternTimer = 0;
                 }
@@ -360,8 +360,8 @@
                             bossShoot();
                             boss.lastAttackTime = currentTime;
                         }
-                        // Mover-se lentamente durante o ataque
-                        boss.x += boss.speed * 0.5 * (player.x > boss.x ? 1 : -1);
+                        // Movimento mais lento durante o ataque
+                        boss.x += boss.speed * 0.3 * (player.x > boss.x ? 1 : -1); // Reduzido de 0.5 para 0.3
                         break;
                         
                     case 'dash':
@@ -372,18 +372,15 @@
                         }
                         
                         if (boss.isDashing) {
-                            boss.x += boss.dashSpeed * boss.direction;
-                            if (currentTime - boss.lastDashTime > boss.dashDuration) {
-                                boss.isDashing = false;
-                            }
+                            boss.x += boss.dashSpeed * boss.direction * 0.8; // Reduzido para 80% da velocidade
                         }
                         break;
                         
                     case 'jump':
                         if (isOnGround(boss)) {
-                            boss.verticalVelocity = -boss.jumpStrength;
+                            boss.verticalVelocity = -boss.jumpStrength * 0.8; // Reduzido para 80% da força
                         }
-                        boss.x += boss.speed * (player.x > boss.x ? 1 : -1);
+                        boss.x += boss.speed * 0.8 * (player.x > boss.x ? 1 : -1); // Reduzido para 80% da velocidade
                         break;
                 }
 
